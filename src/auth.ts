@@ -65,6 +65,8 @@ export class Auth{
             return resp;
         }
         catch(err){
+
+            console.log('error', err);
             throw err;
         }
         
@@ -121,6 +123,17 @@ export class Auth{
 
     async getPreviewKey(guid: string, userBaseUrl: string = null){
         let apiPath = `GetPreviewKey?guid=${guid}`;
+        try{
+            const response = await this.executeGet(apiPath, guid, userBaseUrl);
+            return response.data as string;
+        }
+        catch{
+            return null;
+        }
+    }
+
+    async getFetchKey(guid: string, userBaseUrl: string = null){
+        let apiPath = `GetFetchKey?guid=${guid}`;
         try{
             const response = await this.executeGet(apiPath, guid, userBaseUrl);
             return response.data as string;

@@ -13,7 +13,7 @@ export class asset{
         this.unProcessedAssets = {};
     }
 
-    async getGalleries(guid: string){
+    async getGalleries(guid: string, locale: string, isPreview: boolean = true){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let fileExport = new fileOperations();
 
@@ -28,7 +28,8 @@ export class asset{
 
         let totalRecords = initialRecords.totalCount;
 
-        fileExport.exportFiles('assets/galleries', index, initialRecords);
+        fileExport.createFolder(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/galleries`);
+        fileExport.exportFiles(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/galleries`, index, initialRecords);
 
         let iterations = Math.round(totalRecords/pageSize);
 
@@ -56,13 +57,15 @@ export class asset{
                 index += 1;
                 let galleries = await apiClient.assetMethods.getGalleries(guid, '', pageSize, rowIndex);
     
-                fileExport.exportFiles('assets/galleries', index, galleries);
+                fileExport.exportFiles(`${guid}/${locale}/${isPreview ? 'preview':'live'}/assets/galleries`, index, galleries);
             }
         }
         else{
             progressBar1.update(1, {name : 'Galleries'});
+            
         }
        
+        // progressBar1.stop();
     }
 
     getFilePath(originUrl: string): string{
@@ -74,7 +77,7 @@ export class asset{
         return removedStr;
     }
 
-    async getAssets(guid: string){
+    async getAssets(guid: string, locale: string, isPreview: boolean = true){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let fileExport = new fileOperations();
 
@@ -86,9 +89,9 @@ export class asset{
         let initialRecords = await apiClient.assetMethods.getMediaList(pageSize, recordOffset, guid);
 
         let totalRecords = initialRecords.totalCount;
-        fileExport.createFolder('assets/json');
-        fileExport.createFolder('assets/failedAssets');
-        fileExport.exportFiles('assets/json', index, initialRecords);
+        fileExport.createFolder(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/json`);
+        fileExport.createFolder(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/failedAssets`);
+        fileExport.exportFiles(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/json`, index, initialRecords);
 
         let iterations = Math.round(totalRecords/pageSize);
 
@@ -117,17 +120,18 @@ export class asset{
                 progressBar2.update(i+1)
                 continue
             }
+
             if(folderPath){ 
-                fileExport.createFolder(`assets/${folderPath}`);
+                fileExport.createFolder(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/${folderPath}`);
                 try{
-                    await fileExport.downloadFile(originUrl, `.agility-files/assets/${folderPath}/${fileName}`);
+                    await fileExport.downloadFile(originUrl, `.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}/assets/${folderPath}/${fileName}`);
                 } catch{
                     this.unProcessedAssets[assetMediaID] = fileName;
                 }
             }
             else{
                 try{
-                    await fileExport.downloadFile(originUrl, `.agility-files/assets/${fileName}`);
+                    await fileExport.downloadFile(originUrl, `.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}/assets/${fileName}`);
                 } catch{
                     this.unProcessedAssets[assetMediaID] = fileName;
                 }
@@ -140,7 +144,7 @@ export class asset{
                 recordOffset += pageSize;
     
                 let assets = await apiClient.assetMethods.getMediaList(pageSize, recordOffset, guid);
-                fileExport.exportFiles('assets/json', i + 1, assets);
+                fileExport.exportFiles(`${guid}/${locale}/${isPreview ? 'preview':'live'}/assets/json`, i + 1, assets);
     
                 for(let j = 0; j < assets.assetMedias.length; j++){
 
@@ -157,9 +161,9 @@ export class asset{
                         continue
                     }
                     if(folderPath){ 
-                        fileExport.createFolder(`assets/${folderPath}`);
+                        fileExport.createFolder(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/${folderPath}`);
                         try{
-                            await fileExport.downloadFile(originUrl, `.agility-files/assets/${folderPath}/${fileName}`);
+                            await fileExport.downloadFile(originUrl, `.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}/assets/${folderPath}/${fileName}`);
                         } catch{
                             this.unProcessedAssets[mediaID] = fileName;
                         }
@@ -167,7 +171,7 @@ export class asset{
                     }
                     else{
                         try{
-                            await fileExport.downloadFile(originUrl, `.agility-files/assets/${fileName}`);
+                            await fileExport.downloadFile(originUrl, `.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}/assets/${fileName}`);
                         } catch{
                             this.unProcessedAssets[mediaID] = fileName;
                         }
@@ -178,9 +182,8 @@ export class asset{
             }
         }
         
-        fileExport.exportFiles('assets/failedAssets', 'unProcessedAssets', this.unProcessedAssets);
-
-        await this.getGalleries(guid);
+        fileExport.exportFiles(`${guid}/${locale}/${isPreview ? "preview":"live"}/assets/failedAssets`, 'unProcessedAssets', this.unProcessedAssets);
+        // await this.getGalleries(guid, locale, isPreview);
     }
 
     isUrlProperlyEncoded(url: string) {

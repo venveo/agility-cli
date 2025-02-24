@@ -11,10 +11,11 @@ export class model{
         this._multibar = multibar;
     }
 
-    async getModels(guid: string, baseFolder?: string){
+    async getModels(guid: string, locale: string, isPreview: boolean = false, baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = '.agility-files';
+            baseFolder = `.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`;
         }
+
         let apiClient = new mgmtApi.ApiClient(this._options);
         try{
             let contentModules = await apiClient.modelMethods.getContentModules(true, guid, false);
@@ -41,7 +42,7 @@ export class model{
             let index = 1;
             for(let i = 0; i < models.length; i++){
                 let model = await apiClient.modelMethods.getContentModel(models[i].id, guid);
-                fileExport.exportFiles('models', model.id, model, baseFolder);
+                fileExport.exportFiles(`models`, model.id, model, baseFolder);
                 if(index === 1){
                     progressBar4.update(1);
                 }
@@ -53,15 +54,15 @@ export class model{
         } catch{
 
         }
-        this._multibar.stop();
+        // this._multibar.stop();
     }
 
-    async validateModels(guid: string){
+    async validateModels(guid: string,locale:string, isPreview: boolean = false){
         try{
             let apiClient = new mgmtApi.ApiClient(this._options);
 
             let fileOperation = new fileOperations();
-            let files = fileOperation.readDirectory('models');
+            let files = fileOperation.readDirectory(`${guid}/${locale}/${isPreview ? 'preview':'live'}/models`);
             let modelStr: string[] = [];
             for(let i = 0; i < files.length; i++){
                 let model = JSON.parse(files[i]) as mgmtApi.Model;
@@ -80,11 +81,11 @@ export class model{
         
     }
 
-    deleteModelFiles(models: string[]){
+    deleteModelFiles(models: string[], guid: string, locale:string, isPreview:boolean = false){
         let file = new fileOperations();
         for(let i = 0; i < models.length; i++){
             let fileName = `${models[i]}.json`;
-            file.deleteFile(`.agility-files/models/${fileName}`);
+            file.deleteFile(`.agility-files/${guid}/${locale}/${isPreview ? 'preview':'live'}/models/${fileName}`);
         }
     }
 }

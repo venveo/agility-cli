@@ -40,23 +40,23 @@ export class clone{
         let multibar = createMultibar({name: 'Instance'});
 
         let syncKey = await this.auth.getPreviewKey(this.sourceGuid);
-        let contentPageSync = new sync(this.sourceGuid, syncKey, this.locale, this.channel, this.options, multibar);
+        let contentPageSync = new sync(this.sourceGuid, syncKey, this.locale, this.channel, this.options, multibar, true);
 
-        await contentPageSync.sync();
+        // await contentPageSync.sync();
 
         
 
         let assetsSync = new asset(this.options, multibar);
 
-        await assetsSync.getAssets(this.sourceGuid);
+        // await assetsSync.getAssets(this.sourceGuid);
 
         let containerSync = new container(this.options, multibar);
 
-        await containerSync.getContainers(this.sourceGuid);
+        // await containerSync.getContainers(this.sourceGuid);
 
         let modelSync = new model(this.options, multibar);
 
-        await modelSync.getModels(this.sourceGuid);
+        // await modelSync.getModels(this.sourceGuid);
     }
 
     async push(){

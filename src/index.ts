@@ -2,396 +2,79 @@
 
 import * as yargs from "yargs";
 import { Auth } from "./auth";
-import { fileOperations } from './fileOperations';
+import { fileOperations } from "./fileOperations";
 import { sync } from "./sync";
-import {asset} from './asset';
-import {container} from './container';
+import { asset } from "./asset";
+import { container } from "./container";
 import { model } from "./model";
 import { push } from "./push";
 import { clone } from "./clone";
-import * as mgmtApi  from '@agility/management-sdk';
-const FormData = require('form-data');
-const cliProgress = require('cli-progress');
-const colors = require('ansi-colors');
-const inquirer = require('inquirer');
-import { createMultibar } from './multibar';
-import { modelSync } from './modelSync';
+import * as mgmtApi from "@agility/management-sdk";
+const FormData = require("form-data");
+const cliProgress = require("cli-progress");
+const colors = require("ansi-colors");
+const inquirer = require("inquirer");
+inquirer.registerPrompt('search-list', require('inquirer-search-list'));
+import { createMultibar } from "./multibar";
+import { modelSync } from "./modelSync";
 import { FilterData, ModelFilter } from "./models/modelFilter";
 import { create } from "domain";
+import { homePrompt } from "./prompts/home";
 
-let auth: Auth
+let auth: Auth;
 let options: mgmtApi.Options;
 
-yargs.version('0.0.1_beta').demand(1).exitProcess(false);
+yargs.version("0.0.1_beta").demand(1).exitProcess(false);
 
 
-
-// async function promptUser() {
-//     const answers = await inquirer.prompt([
-//         {
-//             type: 'list',
-//             name: 'option',
-//             message: 'What would you like to do today?:',
-//             choices: ['Download Models', 'Download Content', 'Sync Models', 'Sync Content', 'Push Content', 'Push Models', 'Clone Instance', 'Exit']
-//         }
-//     ]);
-//     console.log(`You selected: ${answers.option}`);
-// }
-
-console.log(colors.yellow('Welcome to Agility CLI.'));
-
-
+console.log(colors.yellow("Welcome to Agility CLI."));
 
 yargs.command({
-    command: '$0',
-    describe: 'Default command',
-    handler: async function() {
+  command: "$0",
+  describe: "Default command",
+  handler: async function () {
+    let auth = new Auth();
+    let isAuthenticated = false;
 
-        
-        let auth = new Auth();
-        let isAuthenticated = false;
+    let code = new fileOperations();
+    let codeFileStatus = code.codeFileExists();
 
-        let code = new fileOperations();
-        let codeFileStatus = code.codeFileExists();
-
-        if (!codeFileStatus) {
-            console.log(colors.red('Launching authentication in browser...'));
-            auth.authorize();
-        }
-
-        const interval = setInterval(() => {
-            let code = new fileOperations();
-            if (code.codeFileExists()) {
-                isAuthenticated = true;
-                console.log(colors.green('You have successfuly authenticated.'));
-                clearInterval(interval);
-                mainMenu();
-            }
-        }, 1000); // Check every second
-
-       
-        async function mainMenu() {
-            const answers = await inquirer.prompt([
-                        {
-                            type: 'list',
-                            name: 'option',
-                            message: 'What would you like to do today?:',
-                            choices: ['Pull files from an instance', 
-                                'Push files to an instance', 
-                                'Sync models', 
-                                'Clone instance to another instance', 
-                                'List instances',
-                                // 'Create new instance',
-                                'Logout']
-                        }
-            ]).then((answers: { option: string }) => {
-                switch (answers.option) {
-                    case 'Pull files from an instance':
-                        pullFiles();
-                        break;
-                    case 'Push files to an instance':
-                        pushFiles();
-                        break;
-                    case 'Sync models':
-                        syncModels();
-                        break;
-                    case 'Clone instance to another instance':
-                        cloneInstance();
-                        break;
-                    case 'List instances':
-                        listInstances();
-                        break;
-                    case 'Create new instance':
-                        createNewInstance();
-                        break;
-                    case 'Logout':
-                        logout();
-                        break;
-                    default:
-                        console.log(colors.red('Invalid option selected.'));
-                }
-            });
-
-            async function listInstances() {
-                console.log('Listing instances...');
-
-                let data = JSON.parse(code.readTempFile('code.json'));
-            
-                const form = new FormData();
-                form.append('cliCode', data.code);
-                let token = await auth.cliPoll(form, null);
-            let user = await auth.getUser(null, token.access_token);
-            let instances = user.websiteAccess;
-            console.log(instances)
-                mainMenu()
-
-
-                // Add your logic here
-            }  
-            async function createNewInstance() {
-                
-            }
-            async function pullFiles() {
-                console.log('Pulling files from an instance...');
-
-                let data = JSON.parse(code.readTempFile('code.json'));
-            
-                const form = new FormData();
-                form.append('cliCode', data.code);
-
-
-            let token = await auth.cliPoll(form, null);
-            let user = await auth.getUser(null, token.access_token);
-            let instances = user.websiteAccess;
-
-            const instanceChoices = instances.map((instance: any) => ({
-                name: `${instance.websiteName} (${instance.guid})`,
-                value: instance.guid
-            }));
-
-            const instanceAnswer = await inquirer.prompt([
-                {
-                    type: 'list',
-                    name: 'selectedInstance',
-                    message: 'Select an instance:',
-                    choices: instanceChoices
-                }
-            ]);
-
-
-            const selectedInstance = instanceAnswer.selectedInstance;
-
-            const instanceOptions = await inquirer.prompt([
-                {
-                    type: 'list',
-                    name: 'action',
-                    message: 'What would you like to do with this instance?',
-                    choices: ['Download', 'Push to another instance.']
-                }
-            ]);
-
-            switch (instanceOptions.action) {
-                case 'Download Models':
-                    console.log(`Downloading models from instance: ${selectedInstance}`);
-                    // Add your logic to download models
-                    break;
-                case 'Download Content':
-                    console.log(`Downloading content from instance: ${selectedInstance}`);
-                    // Add your logic to download content
-                    break;
-                case 'Push Content':
-                    console.log(`Pushing content to instance: ${selectedInstance}`);
-                    // Add your logic to push content
-                    break;
-                case 'Push Models':
-                    console.log(`Pushing models to instance: ${selectedInstance}`);
-                    // Add your logic to push models
-                    break;
-                default:
-                    console.log(colors.red('Invalid option selected.'));
-            }
-
-            // console.log(`You selected instance: ${instanceAnswer.selectedInstance}`);
-
-            // console.log(user)
-
-                // let token = await auth.cliPoll(form, authGuid);
-                // let user = await auth.getUser(null, token.access_token);
-
-
-                // user.getUser()
-                // console.log(user)
-              
-//             options.token = token.access_token;
-                // Add your logic here
-            }
-
-            async function pushFiles() {
-                console.log('Pushing files to an instance...');
-                // Add your logic here
-            }
-
-            async function syncModels() {
-                console.log('Syncing models...');
-                // Add your logic here
-            }
-
-            async function cloneInstance() {
-                console.log('Cloning instance...');
-                // Add your logic here
-            }
-
-            async function logout() {
-                console.log('Logging out...');
-                let code = new fileOperations();
-                code.deleteCodeFile();
-            }
-        }
-        
-        // let code = new fileOperations();
-
-        // if(isAuthenticated){
-        //     console.log('proceeding with authenticated functions')
-        // }
-
-           
-        
-        // let codeFileStatus = code.codeFileExists();
-        
-        //     if (!codeFileStatus) {
-        //         console.log(colors.red('Please authenticate first to perform any operation.'));
-        //         let agilityCLI = new Auth();
-        //         await agilityCLI.authorize();
-        //         let isAuthorized = await agilityCLI.checkAuthorization();
-        //         if (isAuthorized) {
-        //             console.log(colors.green('Authorization successful.'));
-        //         } else {
-        //             console.log(colors.red('Authorization failed.'));
-        //         }
-        //     }
-            
-        //     if(!codeFileStatus){
-
-        //     }
-
-
-        //     if (codeFileStatus) {
-        //         let data = JSON.parse(code.readTempFile('code.json'));
-        //         // console.log(colors.yellow(JSON.stringify(data)));
-        //     }
-
-
-
-            //  console.log('Please provide a valid command.');
+    if (!codeFileStatus) {
+      console.log(colors.red("Launching authentication in browser..."));
+      auth.authorize();
     }
+
+    const interval = setInterval(() => {
+      let code = new fileOperations();
+      if (code.codeFileExists()) {
+        isAuthenticated = true;
+        console.log(colors.green("You have successfuly authenticated."));
+        clearInterval(interval);
+        homePrompt()
+      }
+    }, 1000); // Check every second
+  } 
 });
 
 yargs.command({
-    command: 'logout',
-    describe: 'Log out of Agility.',
+    command: 'login',
+    describe: 'Login to Agility.',
     handler: async function() {
-        let code = new fileOperations();
-        code.deleteCodeFile();
+        auth = new Auth();
+        await auth.authorize();
     }
-})  
-
-yargs.parse();
-
-// Prevent the script from exiting
-setInterval(() => {}, 1000);
-
-// console.log(auth)
-// let code = new fileOperations();
-
-// let codeFileStatus = code.codeFileExists();
-
-// if(!codeFileStatus){
-//     console.log(colors.red('Please authenticate first to perform any operation.'));
-
-// }
-
-// if(codeFileStatus){
-//     let data = JSON.parse(code.readTempFile('code.json'));
-//     // console.log(colors.yellow(JSON.stringify(data)));
-// }
-
-// (async () => {
-//     console.log(colors.yellow('Welcome to Agility CLI.'));
-//     console.log(auth);
-//     let code = new fileOperations();
-
-//     let codeFileStatus = code.codeFileExists();
-
-//     if (!codeFileStatus) {
-//         console.log(colors.red('Please authenticate first to perform any operation.'));
-//         let agilityCLI = new Auth();
-//         await agilityCLI.authorize();
-//         let isAuthorized = await agilityCLI.checkAuthorization();
-//         if (isAuthorized) {
-//             console.log(colors.green('Authorization successful.'));
-//         } else {
-//             console.log(colors.red('Authorization failed.'));
-//         }
-//     }
-
-//     if (codeFileStatus) {
-//         let data = JSON.parse(code.readTempFile('code.json'));
-//         // console.log(colors.yellow(JSON.stringify(data)));
-//     }
-
-//     // delete the auth code
-//     // let deleteCode = code.deleteCodeFile();
-
-//     // promptUser();
-
-//     yargs.command({
-//         command: '',
-//         describe: 'Default command',
-//         handler: function() {
-//             console.log('Please provide a valid command.');
-//         }
-//     });
-
-//     // yargs.parse();
-// })();
-
-// delete the auth code
-// let deleteCode = code.deleteCodeFile();
-
-
-// promptUser();
-
-// yargs.command({
-//     command: '$0',
-//     describe: 'Default command',
-//     handler: function() {
-
-
-//         console.log('Please authenticate.');
-//     }
-// })
-
-// yargs.parse('Test', async function (err, argv, output) {
-
-//     console.log('testing the parse')
-// });
-
-// Add this line to require at least one command
-// yargs.demandCommand(1, 'You need at least one command before moving on');
-
-// Parse the arguments to keep the process running
-// yargs.parse('', async function (err, argv, output) {
-
-
-// });
-
-// if (!yargs.argv._.length) {
-//    console.log('Please provide a valid command.');
-// }
-
-
-
-
-// ...existing code...
+})
 
 yargs.command({
-    command: 'logout',
-    describe: 'Log out of Agility.',
-    handler: async function() {
-        let code = new fileOperations();
-        code.deleteCodeFile();
-    }
-})  
-
-// yargs.command({
-//     command: 'login',
-//     describe: 'Login to Agility.',
-//     handler: async function() {
-//         auth = new Auth();
-//         let code = await auth.authorize();
-//     }
-// })
-
+    command: "logout",
+    describe: "Log out of Agility.",
+    handler: async function () {
+      let code = new fileOperations();
+      code.deleteCodeFile();
+    },
+  });
+  
+  
 // yargs.command({
 //     command: 'sync-models',
 //     describe: 'Sync Models locally.',
@@ -433,7 +116,7 @@ yargs.command({
 //         let codeFileStatus = code.codeFileExists();
 //         if(codeFileStatus){
 //             let data = JSON.parse(code.readTempFile('code.json'));
-            
+
 //             const form = new FormData();
 //             form.append('cliCode', data.code);
 //             let guid: string = argv.sourceGuid as string;
@@ -456,7 +139,7 @@ yargs.command({
 //             else{
 //                 authGuid = targetGuid;
 //             }
-            
+
 //             let token = await auth.cliPoll(form, authGuid);
 
 //             let models: mgmtApi.Model[] = [];
@@ -467,7 +150,7 @@ yargs.command({
 
 //             options = new mgmtApi.Options();
 //             options.token = token.access_token;
-            
+
 //             if(dryRun === undefined){
 //                 dryRun = false;
 //             }
@@ -518,10 +201,10 @@ yargs.command({
 //                         code.createLogFile('logs', 'instancelog', folder);
 //                         let modelPull = new model(options, multibar);
 
-//                         let templatesPull = new sync(guid, 'syncKey', 'locale', 'channel', options, multibar);
-                
+//                         let templatesPull = new sync(guid, 'syncKey', 'locale', 'channel', options, multibar, true);
+
 //                         await modelPull.getModels(guid, folder);
-//                         await templatesPull.getPageTemplates(folder);
+//                         await templatesPull.getPageTemplates(true, guid, folder);
 //                         multibar.stop();
 
 //                         if(targetGuid === ''){
@@ -574,18 +257,17 @@ yargs.command({
 //                         }
 //                         await modelPush.syncProcess(targetGuid, 'locale', models, templates, folder);
 //                     }
-                    
+
 //                 }
 //                 else{
 //                     console.log(colors.red('You do not have the required permissions to perform the model sync operation.'));
 //                 }
-                
+
 //             }
 //             else{
 //                 console.log(colors.red('Please authenticate first to perform the sync models operation.'));
 //             }
 
-           
 //         }
 //         else{
 //             console.log(colors.red('Please authenticate first to perform the sync models operation.'));
@@ -614,7 +296,7 @@ yargs.command({
 //         let codeFileStatus = code.codeFileExists();
 //         if(codeFileStatus){
 //             let data = JSON.parse(code.readTempFile('code.json'));
-            
+
 //             const form = new FormData();
 //             form.append('cliCode', data.code);
 //             let guid: string = argv.sourceGuid as string;
@@ -641,23 +323,22 @@ yargs.command({
 //                     console.log(colors.yellow('Pulling Models from your instance...'));
 //                     let modelPull = new model(options, multibar);
 
-//                     let templatesPull = new sync(guid, 'syncKey', 'locale', 'channel', options, multibar);
-            
+//                     let templatesPull = new sync(guid, 'syncKey', 'locale', 'channel', options, multibar, true);
+
 //                     await modelPull.getModels(guid, folder);
-//                     await templatesPull.getPageTemplates(folder);
+//                     await templatesPull.getPageTemplates(true, guid, folder);
 //                     multibar.stop();
 
 //                 }
 //                 else{
 //                     console.log(colors.red('You do not have the required permissions to perform the model pull operation.'));
 //                 }
-                
+
 //             }
 //             else{
 //                 console.log(colors.red('Please authenticate first to perform the pull operation.'));
 //             }
 
-           
 //         }
 //         else{
 //             console.log(colors.red('Please authenticate first to perform the pull operation.'));
@@ -696,9 +377,9 @@ yargs.command({
 //         let codeFileStatus = code.codeFileExists();
 //         if(codeFileStatus){
 //             code.cleanup('.agility-files');
-            
+
 //             let data = JSON.parse(code.readTempFile('code.json'));
-            
+
 //             const form = new FormData();
 //             form.append('cliCode', data.code);
 //             let guid: string = argv.guid as string;
@@ -721,20 +402,20 @@ yargs.command({
 //                     let syncKey = await auth.getPreviewKey(guid, userBaseUrl);
 //                     if(syncKey){
 //                         console.log(colors.yellow('Pulling your instance...'));
-//                         let contentPageSync = new sync(guid, syncKey, locale, channel, options, multibar);
-        
+//                         let contentPageSync = new sync(guid, syncKey, locale, channel, options, multibar, true);
+
 //                         await contentPageSync.sync();
-            
+
 //                         let assetsSync = new asset(options, multibar);
-            
+
 //                         await assetsSync.getAssets(guid);
-            
+
 //                         let containerSync = new container(options, multibar);
-            
+
 //                         await containerSync.getContainers(guid);
-            
+
 //                         let modelSync = new model(options, multibar);
-            
+
 //                         await modelSync.getModels(guid);
 //                     }
 //                     else{
@@ -744,12 +425,12 @@ yargs.command({
 //                 else{
 //                     console.log(colors.red('You do not have required permissions on the instance to perform the pull operation.'));
 //                 }
-                
+
 //             }
 //             else{
 //                 console.log(colors.red('Please authenticate first to perform the pull operation.'));
 //             }
-           
+
 //         }
 //         else{
 //             console.log(colors.red('Please authenticate first to perform the pull operation.'));
@@ -785,7 +466,7 @@ yargs.command({
 //             let data = JSON.parse(code.readTempFile('code.json'));
 
 //             let multibar = createMultibar({name: 'Push'});
-            
+
 //             const form = new FormData();
 //             form.append('cliCode', data.code);
 
@@ -822,7 +503,6 @@ yargs.command({
 //                             }
 //                     }
 
-                
 //                     if(duplicates.length > 0){
 //                     await inquirer.prompt([
 //                             {
@@ -845,16 +525,16 @@ yargs.command({
 //                 else{
 //                     console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
 //                 }
-                
+
 //             } else{
 //                 console.log(colors.red('Please authenticate first to perform the push operation.'));
 //             }
-            
+
 //         }
 //         else{
 //             console.log(colors.red('Please pull an instance first to push an instance.'));
 //         }
-        
+
 //        }
 //        else {
 //         console.log(colors.red('Please authenticate first to perform the push operation.'));
@@ -933,7 +613,7 @@ yargs.command({
 //         else{
 //             console.log(colors.red('Please authenticate first to perform the clone operation.'));
 //         }
-        
+
 //        }
 //        else {
 //         console.log(colors.red('Please authenticate first to perform the clone operation.'));
@@ -942,4 +622,8 @@ yargs.command({
 // })
 
 
-// yargs.parse();
+yargs.parse();
+
+// Prevent the script from exiting
+setInterval(() => {}, 1000);
+
