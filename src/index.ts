@@ -463,7 +463,6 @@ yargs.command({
     }
 })
 
-
 yargs.command({
     command: 'updatecontent',
     describe: 'Update a specific content ID or list of content IDs.',
@@ -479,114 +478,107 @@ yargs.command({
             type: 'string'
         },
         contentItems: {
-            describe: 'What content items to update ',
+            describe: 'What content items to update',
             demandOption: false,
             type: 'string',
             default: 'all'
         }
     },
     handler: async function(argv) {
-       let guid: string = argv.guid as string;
-       let locale: string = argv.locale as string;
-       let contentItems: string = argv.contentItems as string;
+        const guid: string = argv.guid as string;
+        const locale: string = argv.locale as string;
+        const contentItems: string = argv.contentItems as string;
 
-       let code = new fileOperations();
-       auth = new Auth();
-       let codeFileStatus = code.codeFileExists();
+        const code = new fileOperations();
+        auth = new Auth();
+        const codeFileStatus = code.codeFileExists();
 
-       if(codeFileStatus){
-        let agilityFolder = code.cliFolderExists();
-        if(agilityFolder){
-            let data = JSON.parse(code.readTempFile('code.json'));
+        if (codeFileStatus) {
+            const agilityFolder = code.cliFolderExists();
+            if (agilityFolder) {
+                const data = JSON.parse(code.readTempFile('code.json'));
 
-            let multibar = createMultibar({name: 'Push'});
-            
-            const form = new FormData();
-            form.append('cliCode', data.code);
+                const multibar = createMultibar({ name: 'Push' });
 
-            let token = await auth.cliPoll(form, guid);
+                const form = new FormData();
+                form.append('cliCode', data.code);
 
-            options = new mgmtApi.Options();
-            options.token = token.access_token;
+                const token = await auth.cliPoll(form, guid);
 
-            let user = await auth.getUser(guid, token.access_token);
-            if(user){
-                let permitted = await auth.checkUserRole(guid, token.access_token);
-                if(permitted){
-                    console.log('-----------------------------------------------')
-                    console.log(colors.yellow('Updating your content items...'));
-                    console.log('Content items will be in preview state and changes will need to be published.')
-                    console.log('-----------------------------------------------')
-                    
-                    let pushSync = new push(options, multibar);
-                    let action = await pushSync.updateContentItems(guid, locale, contentItems);
-                    multibar.stop();
+                options = new mgmtApi.Options();
+                options.token = token.access_token;
 
-                    const total = contentItems.split(',').length;
-                    const successful = action.successfulItems.length;
+                const user = await auth.getUser(guid, token.access_token);
+                if (user) {
+                    const permitted = await auth.checkUserRole(guid, token.access_token);
+                    if (permitted) {
+                        console.log('-----------------------------------------------');
+                        console.log(colors.yellow('Updating your content items...'));
+                        console.log('Content items will be in preview state and changes will need to be published.');
+                        console.log('-----------------------------------------------');
 
-                    if(successful < total){
-                        console.log(colors.yellow(`${successful} out of ${total} content items were successfully updated.`));
-                        if(action.notOnDestination.length > 0) {
-                            console.log(colors.yellow(`Not found on destination instance`), action.notOnDestination);
+                        const pushSync = new push(options, multibar);
+                        const action = await pushSync.updateContentItems(guid, locale, contentItems);
+                        multibar.stop();
+
+                        const total = contentItems.split(',').length;
+                        const successful = action.successfulItems.length;
+
+                        if (successful < total) {
+                            console.log(colors.yellow(`${successful} out of ${total} content items were successfully updated.`));
+                            if (action.notOnDestination.length > 0) {
+                                console.log(colors.yellow('Not found on destination instance'), action.notOnDestination);
+                            }
+
+                            if (action.notOnSource.length > 0) {
+                                console.log(colors.yellow('Not found in local files'), action.notOnSource);
+                            }
+
+                            if (action.modelMismatch.length > 0) {
+                                console.log(colors.yellow('Model mismatch on destination instance'), action.modelMismatch);
+                            }
+                        } else {
+                            console.log(colors.green(`${successful} out of ${total} content items were successfully updated.`));
                         }
 
-                        if(action.notOnSource.length > 0){
-                        console.log(colors.yellow(`Not found in local files`), action.notOnSource);
+                        const apiClient = new mgmtApi.ApiClient(options);
+
+                        const publishPrompt = await inquirer.prompt([
+                            {
+                                type: 'confirm',
+                                name: 'publish',
+                                message: `Do you wish to publish the ${action.successfulItems.length} successful updates now?`,
+                                default: false
+                            }
+                        ]);
+
+                        if (publishPrompt.publish) {
+                            console.log(colors.yellow('Publishing your content items...'));
+                            for (const contentItem of action.successfulItems) {
+                                await apiClient.contentMethods.publishContent(contentItem, guid, locale, contentItem);
+                            }
+                            console.log(colors.green('Content items have been published.'));
+                        } else {
+                            console.log(colors.yellow('Content items have not been published.'));
                         }
-                        
-                        if(action.modelMismatch.length > 0){
-                            console.log(colors.yellow(`Model mismatch on destination instance`), action.modelMismatch);
-                        }
+
                     } else {
-                        console.log(colors.green(`${successful} out of ${total} content items were successfully updated.`));
+                        console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
                     }
 
-                    let apiClient = new mgmtApi.ApiClient(options);
-                    
-                    const publishPrompt = await inquirer.prompt([
-                        {
-                            type: 'confirm',
-                            name: 'publish',
-                            message: `Do you wish to publish the ${action.successfulItems.length} successful updates now?`,
-                            default: false
-                        }
-                    ]);
-
-                    if (publishPrompt.publish) {
-                        console.log(colors.yellow('Publishing your content items...'));
-                        const contentItems = action.successfulItems.map((item) => item);
-                        
-                     
-                        for (const contentItem of contentItems) {
-                            await apiClient.contentMethods.publishContent(contentItem, guid, locale, contentItem);
-                        }
-                   
-                        console.log(colors.green('Content items have been published.'));
-                    } else {
-                        console.log(colors.yellow('Content items have not been published.'));
-                    }
-
+                } else {
+                    console.log(colors.red('Please authenticate first to perform the push operation.'));
                 }
-                else{
-                    console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
-                }
-                
-            } else{
-                console.log(colors.red('Please authenticate first to perform the push operation.'));
+
+            } else {
+                console.log(colors.red('Please pull an instance first to push an instance.'));
             }
-            
+
+        } else {
+            console.log(colors.red('Please authenticate first to perform the push operation.'));
         }
-        else{
-            console.log(colors.red('Please pull an instance first to push an instance.'));
-        }
-        
-       }
-       else {
-        console.log(colors.red('Please authenticate first to perform the push operation.'));
-       }
     }
-})
+});
 
 yargs.command({
     command: 'clone',
