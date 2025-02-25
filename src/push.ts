@@ -1497,26 +1497,6 @@ export class push{
        
     }
 
-
-    async pushGallery(guid: string, gallery: any){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-
-
-        // let assetGalleries = this.createBaseGalleries();
-
-        // gallery should be a name
-        let existingGallery = await apiClient.assetMethods.getGalleryByName(guid, gallery);
-        if(existingGallery){
-            let createdGallery = await apiClient.assetMethods.saveGallery(guid, gallery);
-            this.processedGalleries[existingGallery.mediaGroupingID] = createdGallery.mediaGroupingID;
-        }
-        else{
-            console.log(`Gallery with name ${gallery} does not exist.`);
-            gallery.mediaGroupingID = 0;
-        }
-    }
-
-
     async pushAssets(guid: string){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let defaultContainer = await apiClient.assetMethods.getDefaultContainer(guid);
@@ -1595,12 +1575,6 @@ export class push{
                     
             }
         }
-    }
-
-    async pushAsset(guid: string, assset:any){
-
-
-
     }
 
     async doesGalleryExists(guid: string, mediaGroupingName: string){
