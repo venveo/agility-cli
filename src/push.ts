@@ -1608,27 +1608,17 @@ export class push{
             fileOperation.createLogFile('logs', 'instancelog');
             await this.pushGalleries(guid);
             await this.pushAssets(guid);
-
-            // downloads the entire models folder
-
-        
             let models = this.getBaseModels();
-
             if(models){
 
-                // downloads the entire containers folder
-                let containers = this.getBaseContainers();
-            
-
-                // separate the models
+                let containers = this.getBaseContainers();            
                 let linkedModels = await this.getLinkedModels(models);
                 let normalModels = await this.getNormalModels(models, linkedModels);
 
                 const progressBar3 = this._multibar.create(normalModels.length, 0);
                 progressBar3.update(0, {name : 'Models: Non Linked'});
                 let index = 1;
-               
-                // push all the normal models
+
                 for(let i = 0; i < normalModels.length; i++){
                     let normalModel = normalModels[i];
                     await this.pushNormalModels(normalModel, guid);
@@ -1636,41 +1626,18 @@ export class push{
                     index += 1;
                 }
                 
-                // push linked models
                 await this.pushLinkedModels(linkedModels, guid);
+                let containerModels = models
                 
-
-                // for some reason we get the base models again, even though we already have them
-                let containerModels = this.getBaseModels();
-
-
                 if(containers){
-
-                    // we push the containers up
                     await this.pushContainers(containers, containerModels, guid);
-
-
-                    // we then get the base content items from the /item folder
                     let contentItems = await this.getBaseContentItems(guid, locale);
                     if(contentItems){
-                        const startTime = Date.now();
                         let totalItems = contentItems.length;
-
-                        console.log(`[${new Date().toISOString()}] getting linked content items... (0/${totalItems})`);
-                        // this takes a long time
-                        // we probably want to add a progress bar
-                        let linkedContentItems = await this.getLinkedContent(guid, contentItems);
-                        
-
-                        console.log(`[${new Date().toISOString()}] getting normal content items. (${linkedContentItems.length}/${totalItems})`);
+                        let linkedContentItems = await this.getLinkedContent(guid, contentItems);                        
                         let normalContentItems = await this.getNormalContent(guid, contentItems, linkedContentItems);
-                        console.log(`[${new Date().toISOString()}] pushing normal content items. (${linkedContentItems.length}/${totalItems})`);
                         await this.pushNormalContentItems(guid, locale, normalContentItems);
-                        console.log(`[${new Date().toISOString()}] pushing linked content items. (${linkedContentItems.length + normalContentItems.length}/${totalItems})`);
                         await this.pushLinkedContentItems(guid, locale, linkedContentItems);
-
-                        const endTime = Date.now();
-                        console.log(`[${new Date().toISOString()}] Content items processing completed in ${(endTime - startTime) / 1000} seconds. (${totalItems}/${totalItems})`);
                     }
                     let pageTemplates = await this.createBaseTemplates();
 
