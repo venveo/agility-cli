@@ -3,6 +3,7 @@ import { fileOperations } from './fileOperations';
 import * as fs from 'fs';
 const FormData = require('form-data');
 import * as cliProgress from 'cli-progress';
+import ansiColors from 'ansi-colors';
 
 export class push{
     _options : mgmtApi.Options;
@@ -67,7 +68,7 @@ export class push{
     }
     /////////////////////////////END: METHODS FOR DEBUG ONLY/////////////////////////////////////////////////////////////////
 
-    createBaseModels(baseFolder?: string){
+    getBaseModels(baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
             baseFolder = '.agility-files';
           }
@@ -85,6 +86,22 @@ export class push{
             return models;
         } catch {
             fileOperation.appendLogFile(`\n No Models were found in the source Instance to process.`);
+            return null;
+        }
+    }
+
+
+    getBaseModel(modelId: string, baseFolder?: string){
+        if(baseFolder === undefined || baseFolder === ''){
+            baseFolder = '.agility-files';
+        }
+        let fileOperation = new fileOperations();
+        try{
+            let file = fileOperation.readFile(`${baseFolder}/models/${modelId}.json`);
+            let model = JSON.parse(file) as mgmtApi.Model;
+            return model;
+        } catch {
+            fileOperation.appendLogFile(`\n Model with ID ${modelId} was not found in the source Instance.`);
             return null;
         }
     }
@@ -126,7 +143,10 @@ export class push{
         }
     }
 
-    createBaseContainers(){
+    getBaseContainers(){
+
+        // the naming for this is weird, it should be, getBaseContainers
+
         let fileOperation = new fileOperations();
         try{
             
@@ -186,48 +206,54 @@ export class push{
         }
     }
 
-    async createBaseContentItems(guid: string, locale: string){
-            let apiClient = new mgmtApi.ApiClient(this._options);
-            let fileOperation = new fileOperations();
-            if(fileOperation.folderExists(`${locale}/item`)){
-                
-                let files = fileOperation.readDirectory(`${locale}/item`);
+    async getBaseContentItems(guid: string, locale: string, contentItems?: any[]){
+        let apiClient = new mgmtApi.ApiClient(this._options);
+        let fileOperation = new fileOperations();
+        let contentItemsArray: mgmtApi.ContentItem[] = [];
 
-                const validBar1 = this._multibar.create(files.length, 0);
-                validBar1.update(0, {name : 'Content Items: Validation'});
+       if (fileOperation.folderExists(`${locale}/item`)) {
+            let files = fileOperation.readDirectory(`${locale}/item`);
 
-                let index = 1;
+            const validBar1 = this._multibar.create(files.length, 0);
+            validBar1.update(0, {name : 'Content Items: Validation'});
 
-                let contentItems : mgmtApi.ContentItem[] = [];
+            let index = 1;
 
-                for(let i = 0; i < files.length; i++){
-                    let contentItem = JSON.parse(files[i]) as mgmtApi.ContentItem;
-                    validBar1.update(index);
-                    index += 1;
-                    try{
-                        let container = await apiClient.containerMethods.getContainerByReferenceName(contentItem.properties.referenceName, guid);
-                        if(container){
-                            contentItems.push(contentItem);
-                        }
-                    } catch{
-                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName
-                        fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName}`);
-                        continue;
+            for (let i = 0; i < files.length; i++) {
+                let contentItem = JSON.parse(files[i]) as mgmtApi.ContentItem;
+                validBar1.update(index);
+                index += 1;
+                try {
+                    let container = await apiClient.containerMethods.getContainerByReferenceName(contentItem.properties.referenceName, guid);
+                    if (container) {
+                        contentItemsArray.push(contentItem);
                     }
+                } catch {
+                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                    fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName}`);
+                    continue;
                 }
-                return contentItems;
             }
-            else{
-                fileOperation.appendLogFile(`\n No Content Items were found in the source Instance to process.`);
-            }
-            
+        } else {
+            fileOperation.appendLogFile(`\n No Content Items were found in the source Instance to process.`);
+        }
+
+        return contentItemsArray;
     }
 
     async getLinkedContent(guid: string, contentItems: mgmtApi.ContentItem[]){
             let linkedContentItems : mgmtApi.ContentItem[] = []
             let apiClient = new mgmtApi.ApiClient(this._options);
+
+            const progressBar10 = this._multibar.create(contentItems.length, 0);
+            progressBar10.update(0, {name : 'Get Content Items: Linked'});
+
+            let index = 1;
+
             for(let i = 0; i < contentItems.length; i++){
                 let contentItem = contentItems[i];
+                progressBar10.update(index);
+                index += 1;
                 let containerRef = contentItem.properties.referenceName;
                 try{
                     let container = await apiClient.containerMethods.getContainerByReferenceName(containerRef, guid);
@@ -397,7 +423,7 @@ export class push{
         
     }
 
-    async pusNormalContentItems(guid: string, locale: string, contentItems: mgmtApi.ContentItem[]){
+    async pushNormalContentItems(guid: string, locale: string, contentItems: mgmtApi.ContentItem[]){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let fileOperation = new fileOperations();
         const progressBar6 = this._multibar.create(contentItems.length, 0);
@@ -430,6 +456,7 @@ export class push{
                 let field = model.fields[j];
                 let fieldName = this.camelize(field.name);
                 let fieldVal = contentItem.fields[fieldName];
+
                 if(field.type === 'ImageAttachment' || field.type === 'FileAttachment' || field.type === 'AttachmentList'){
                     if(typeof fieldVal === 'object'){
                             if(Array.isArray(fieldVal)){
@@ -463,7 +490,7 @@ export class push{
                     }
                 }
             }
-            const oldContentId = contentItem.contentID; 
+            const oldContentId = contentItem.contentID;   
             contentItem.contentID = -1;
 
             let createdContentItemId = await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
@@ -479,6 +506,91 @@ export class push{
             }
         }
    }
+
+
+   async updateNormalContentItems(guid: string, locale: string, contentItems: mgmtApi.ContentItem[]){
+    let apiClient = new mgmtApi.ApiClient(this._options);
+    let fileOperation = new fileOperations();
+    const progressBar6 = this._multibar.create(contentItems.length, 0);
+    progressBar6.update(0, {name : 'Content Items: Non Linked'});
+
+    let index = 1;
+    for(let i = 0; i < contentItems.length; i++){
+        let contentItem = contentItems[i]; //contentItems.find((content) => content.contentID === 122);//160, 106
+        progressBar6.update(index);
+        index += 1;
+
+        let container = new mgmtApi.Container();
+        let model = new mgmtApi.Model();
+            try{
+                container = await apiClient.containerMethods.getContainerByReferenceName(contentItem.properties.referenceName, guid);
+            } catch {
+                this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                continue;
+            }
+        
+            try{
+                model = await apiClient.modelMethods.getContentModel(container.contentDefinitionID, guid);
+            } catch{
+                fileOperation.appendLogFile(`\n Unable to find model for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                continue;
+            }
+        for(let j = 0; j < model.fields.length; j++){
+            let field = model.fields[j];
+            let fieldName = this.camelize(field.name);
+            let fieldVal = contentItem.fields[fieldName];
+
+            if(field.type === 'ImageAttachment' || field.type === 'FileAttachment' || field.type === 'AttachmentList'){
+                if(typeof fieldVal === 'object'){
+                        if(Array.isArray(fieldVal)){
+                            for(let k = 0; k < fieldVal.length; k++){
+                                let retUrl = await this.changeOriginKey(guid, fieldVal[k].url);
+                                contentItem.fields[fieldName][k].url = retUrl;
+                            }
+                        } else {
+                            if('url' in fieldVal){
+                                let retUrl = await this.changeOriginKey(guid, fieldVal.url);
+                                contentItem.fields[fieldName].url = retUrl;
+                            }
+                        }
+                } 
+            }
+            else 
+            {
+                if(typeof fieldVal === 'object'){
+                    if('fulllist' in fieldVal){
+                        delete fieldVal.fulllist;
+                        if(field.type === 'PhotoGallery'){
+                            let oldGalleryId = fieldVal.galleryid;
+                            if(this.processedGalleries[oldGalleryId]){
+                                contentItem.fields[fieldName] = this.processedGalleries[oldGalleryId].toString();
+                            }
+                            else{
+                                contentItem.fields[fieldName] = fieldVal.galleryid.toString();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        const oldContentId = contentItem.contentID;   
+        // contentItem.contentID = -1;
+
+        let createdContentItemId = await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
+
+        if(createdContentItemId[0]){
+            if(createdContentItemId[0] > 0){
+                this.processedContentIds[oldContentId] = createdContentItemId[0];
+            }
+            else{
+                this.skippedContentItems[oldContentId] = contentItem.properties.referenceName;
+                fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${oldContentId}.`);
+            }
+        }
+    }
+}
 
    async pushLinkedContentItems(guid: string, locale: string, contentItems: mgmtApi.ContentItem[]){
         let apiClient = new mgmtApi.ApiClient(this._options);
@@ -763,6 +875,291 @@ export class push{
         }
    }
     
+
+
+   async updateLinkedContentItems(guid: string, locale: string, contentItems: mgmtApi.ContentItem[]){
+    let apiClient = new mgmtApi.ApiClient(this._options);
+    let fileOperation = new fileOperations();
+    const progressBar7 = this._multibar.create(contentItems.length, 0);
+    progressBar7.update(0, {name : 'Content Items: Linked'});
+
+    let index = 1;
+    let contentLength = contentItems.length;
+    try{
+        do{
+            for(let i = 0; i < contentItems.length; i++){
+                let contentItem = contentItems[i];
+                if(index <= contentLength)
+                    progressBar7.update(index);
+                index += 1;
+                if(this.skippedContentItems[contentItem.contentID]){
+                    contentItem = null;
+                }
+                if(!contentItem){
+                    continue;
+                }
+                let container = new mgmtApi.Container();
+                let model = new mgmtApi.Model();
+    
+                try{
+                    container = await apiClient.containerMethods.getContainerByReferenceName(contentItem.properties.referenceName, guid);
+                } catch {
+                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                    fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                    contentItem[i] = null;
+                }
+            
+                try{
+                    model = await apiClient.modelMethods.getContentModel(container.contentDefinitionID, guid);
+                } catch{
+                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                    fileOperation.appendLogFile(`\n Unable to find model for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                    contentItem[i] = null;
+                }
+                for(let j = 0; j < model.fields.length; j++){
+                    let field = model.fields[j];
+                    let settings = field.settings;
+                    let fieldName = this.camelize(field.name);
+                    let fieldVal = contentItem.fields[fieldName];
+                    if(fieldVal){
+                        if(field.type === 'Content'){
+                             if(settings['LinkeContentDropdownValueField']){
+                                 if(settings['LinkeContentDropdownValueField']!=='CREATENEW'){
+                                    let linkedField = this.camelize(settings['LinkeContentDropdownValueField']);
+                                    let linkedContentIds = contentItem.fields[linkedField];
+                                    let newlinkedContentIds = '';
+                                    if(linkedContentIds){
+                                        let splitIds = linkedContentIds.split(',');
+                                        for(let k = 0; k < splitIds.length; k++){
+                                            let id = splitIds[k];
+                                            if(this.skippedContentItems[id]){
+                                                this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                                fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                                continue;
+                                            }
+                                            if(this.processedContentIds[id]){
+                                                let newSortId = this.processedContentIds[id].toString();
+                                                if(!newlinkedContentIds){
+                                                    newlinkedContentIds = newSortId.toString();
+                                                    
+                                                } else{
+                                                    newlinkedContentIds += ',' + newSortId.toString();
+                                                }
+                                            }
+                                            else{
+                                                try{
+                                                    let file = fileOperation.readFile(`.agility-files/${locale}/item/${id}.json`);
+                                                    contentItem = null;
+                                                    break;
+                                                } catch{
+                                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                                    this.skippedContentItems[id] = 'OrphanRef';
+                                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}.`);
+                                                    continue;
+                                                }
+                                                
+                                            }
+                                        }
+                                    }
+                                    if(newlinkedContentIds)
+                                        contentItem.fields[linkedField] = newlinkedContentIds;
+                                 }
+                             }
+                             if(settings['SortIDFieldName']){
+                                if(settings['SortIDFieldName']!=='CREATENEW'){
+                                    let sortField = this.camelize(settings['SortIDFieldName']);
+                                    let sortContentIds = contentItem.fields[sortField];
+                                    let newSortContentIds = '';
+                                    
+                                    if(sortContentIds){
+                                        let splitIds = sortContentIds.split(',');
+                                        for(let k = 0; k < splitIds.length; k++){
+                                            let id = splitIds[k];
+                                            if(this.skippedContentItems[id]){
+                                                this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                                fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                                continue;
+                                            }
+                                            if(this.processedContentIds[id]){
+                                                let newSortId = this.processedContentIds[id].toString();
+                                                if(!newSortContentIds){
+                                                    newSortContentIds = newSortId.toString();
+                                                    
+                                                } else{
+                                                    newSortContentIds += ',' + newSortId.toString();
+                                                }
+                                            }
+                                            else{
+                                                try{
+                                                    let file = fileOperation.readFile(`.agility-files/${locale}/item/${id}.json`);
+                                                    contentItem = null;
+                                                    break;
+                                                } catch{
+                                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                                    this.skippedContentItems[id] = 'OrphanRef';
+                                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}`);
+                                                    continue;
+                                                }
+                                                
+                                            }
+                                        }
+                                    }
+                                    if(newSortContentIds)
+                                        contentItem.fields[sortField] = newSortContentIds;
+                                }
+                             }
+                                 delete fieldVal.fulllist;
+                                 if('contentid' in fieldVal){
+                                     let linkedContentId = fieldVal.contentid;
+                                     if(this.skippedContentItems[linkedContentId]){
+                                         this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                         fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                         continue;
+                                     }
+                                     if(this.processedContentIds[linkedContentId]){
+                                         let file = fileOperation.readFile(`.agility-files/${locale}/item/${linkedContentId}.json`);
+                                         let extractedContent = JSON.parse(file) as mgmtApi.ContentItem;
+                                         contentItem.fields[fieldName] = extractedContent.properties.referenceName; 
+                                     }
+                                     else{
+                                         try{
+                                             let file = fileOperation.readFile(`.agility-files/${locale}/item/${linkedContentId}.json`);
+                                             contentItem = null;
+                                             break;
+                                         }
+                                         catch{
+                                             this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                             this.skippedContentItems[linkedContentId] = 'OrphanRef';
+                                             fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${linkedContentId}`);
+                                             continue;
+                                         }
+                                         
+                                     }
+                                 }
+                                 if('referencename' in fieldVal){
+                                     let refName = fieldVal.referencename;
+                                     try{
+                                         let container = await apiClient.containerMethods.getContainerByReferenceName(refName, guid);
+                                         if(!container){
+                                             this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                             fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                             continue;
+                                         }
+                                         if('sortids' in fieldVal){
+                                             contentItem.fields[fieldName].referencename = fieldVal.referencename;
+                                         }
+                                         else{
+                                             contentItem.fields[fieldName] = fieldVal.referencename;
+                                         }
+                                     } catch{
+                                         this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                         fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                         continue;
+                                     }
+                                 }
+                                 if('sortids' in fieldVal){
+                                     let sortids = fieldVal.sortids.split(',');
+                                     let newSortIds = '';
+                                     for(let s = 0; s < sortids.length; s++){
+                                         let sortid = sortids[s];
+                                         if(this.skippedContentItems[sortid]){
+                                             this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                             fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                             continue;
+                                         }
+                                         if(this.processedContentIds[sortid]){
+                                             let newSortId = this.processedContentIds[sortid].toString();
+                                             if(!newSortIds){
+                                                 newSortIds = newSortId.toString();
+                                                 
+                                             } else{
+                                                 newSortIds += ',' + newSortId.toString();
+                                             }
+                                         }
+                                         else{
+                                             try{
+                                                 let file = fileOperation.readFile(`.agility-files/${locale}/item/${sortid}.json`);
+                                                 contentItem = null;
+                                                 break;
+                                             } catch{
+                                                 this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                                 this.skippedContentItems[sortid] = 'OrphanRef';
+                                                 fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. . Orphan ID ${sortid}`);
+                                                 continue;
+                                             }
+                                             
+                                         }
+                                     }
+                                     if(newSortIds){
+                                         newSortIds = newSortIds.substring(0, newSortIds.length);
+                                     }
+                                     contentItem.fields[fieldName].sortids = newSortIds;
+                                 }
+                             
+                         }
+                         else if(field.type === 'ImageAttachment' || field.type === 'FileAttachment' || field.type === 'AttachmentList'){
+                             if(typeof fieldVal === 'object'){
+                                 if(Array.isArray(fieldVal)){
+                                     for(let k = 0; k < fieldVal.length; k++){
+                                         let retUrl = await this.changeOriginKey(guid, fieldVal[k].url);
+                                         contentItem.fields[fieldName][k].url = retUrl;
+                                     }
+                                 } else {
+                                     if('url' in fieldVal){
+                                         let retUrl = await this.changeOriginKey(guid, fieldVal.url);
+                                         contentItem.fields[fieldName].url = retUrl;
+                                     }
+                                 }
+                             } 
+                         }
+                         else 
+                         {
+                             if(typeof fieldVal === 'object'){
+                                 if('fulllist' in fieldVal){
+                                     delete fieldVal.fulllist;
+                                     if(field.type === 'PhotoGallery'){
+                                         let oldGalleryId = fieldVal.galleryid;
+                                         if(this.processedGalleries[oldGalleryId]){
+                                             contentItem.fields[fieldName] = this.processedGalleries[oldGalleryId].toString();
+                                         }
+                                         else{
+                                             contentItem.fields[fieldName] = fieldVal.galleryid.toString();
+                                         }
+                                     }
+                                 }
+                             }
+                         }
+                    }
+                    
+                }
+
+                if(contentItem){
+                    if(!this.skippedContentItems[contentItem.contentID]){
+                        const oldContentId = contentItem.contentID; 
+                        // contentItem.contentID = -1;
+                        
+                        let createdContentItemId = await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
+
+                        if(createdContentItemId[0]){
+                            if(createdContentItemId[0] > 0){
+                                this.processedContentIds[oldContentId] = createdContentItemId[0];
+                            }
+                            else{
+                                this.skippedContentItems[oldContentId] = contentItem.properties.referenceName;
+                                fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${oldContentId}.`);
+                            }
+                        }
+                        contentItem[i] = null;
+                    }
+               
+                }
+            }
+        } while(contentItems.filter(c => c !== null).length !==0)
+    } catch {
+
+    }
+}
+
 
     async changeOriginKey(guid: string, url: string){
         let apiClient = new mgmtApi.ApiClient(this._options);
@@ -1469,6 +1866,26 @@ export class push{
        
     }
 
+
+    async pushGallery(guid: string, gallery: any){
+        let apiClient = new mgmtApi.ApiClient(this._options);
+
+
+        // let assetGalleries = this.createBaseGalleries();
+
+        // gallery should be a name
+        let existingGallery = await apiClient.assetMethods.getGalleryByName(guid, gallery);
+        if(existingGallery){
+            let createdGallery = await apiClient.assetMethods.saveGallery(guid, gallery);
+            this.processedGalleries[existingGallery.mediaGroupingID] = createdGallery.mediaGroupingID;
+        }
+        else{
+            console.log(`Gallery with name ${gallery} does not exist.`);
+            gallery.mediaGroupingID = 0;
+        }
+    }
+
+
     async pushAssets(guid: string){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let defaultContainer = await apiClient.assetMethods.getDefaultContainer(guid);
@@ -1549,6 +1966,12 @@ export class push{
         }
     }
 
+    async pushAsset(guid: string, assset:any){
+
+
+
+    }
+
     async doesGalleryExists(guid: string, mediaGroupingName: string){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let mediaGroupingID = -1;
@@ -1580,15 +2003,27 @@ export class push{
             fileOperation.createLogFile('logs', 'instancelog');
             await this.pushGalleries(guid);
             await this.pushAssets(guid);
-            let models = this.createBaseModels();
+
+            // downloads the entire models folder
+
+        
+            let models = this.getBaseModels();
+
             if(models){
-                let containers = this.createBaseContainers();
+
+                // downloads the entire containers folder
+                let containers = this.getBaseContainers();
             
+
+                // separate the models
                 let linkedModels = await this.getLinkedModels(models);
                 let normalModels = await this.getNormalModels(models, linkedModels);
+
                 const progressBar3 = this._multibar.create(normalModels.length, 0);
                 progressBar3.update(0, {name : 'Models: Non Linked'});
                 let index = 1;
+               
+                // push all the normal models
                 for(let i = 0; i < normalModels.length; i++){
                     let normalModel = normalModels[i];
                     await this.pushNormalModels(normalModel, guid);
@@ -1596,20 +2031,41 @@ export class push{
                     index += 1;
                 }
                 
+                // push linked models
                 await this.pushLinkedModels(linkedModels, guid);
-                let containerModels = this.createBaseModels();
+                
+
+                // for some reason we get the base models again, even though we already have them
+                let containerModels = this.getBaseModels();
+
+
                 if(containers){
+
+                    // we push the containers up
                     await this.pushContainers(containers, containerModels, guid);
 
-                    let contentItems = await this.createBaseContentItems(guid, locale);
 
+                    // we then get the base content items from the /item folder
+                    let contentItems = await this.getBaseContentItems(guid, locale);
                     if(contentItems){
+                        const startTime = Date.now();
+                        let totalItems = contentItems.length;
+
+                        console.log(`[${new Date().toISOString()}] getting linked content items... (0/${totalItems})`);
+                        // this takes a long time
+                        // we probably want to add a progress bar
                         let linkedContentItems = await this.getLinkedContent(guid, contentItems);
+                        
 
+                        console.log(`[${new Date().toISOString()}] getting normal content items. (${linkedContentItems.length}/${totalItems})`);
                         let normalContentItems = await this.getNormalContent(guid, contentItems, linkedContentItems);
-                        await this.pusNormalContentItems(guid, locale, normalContentItems);
-
+                        console.log(`[${new Date().toISOString()}] pushing normal content items. (${linkedContentItems.length}/${totalItems})`);
+                        await this.pushNormalContentItems(guid, locale, normalContentItems);
+                        console.log(`[${new Date().toISOString()}] pushing linked content items. (${linkedContentItems.length + normalContentItems.length}/${totalItems})`);
                         await this.pushLinkedContentItems(guid, locale, linkedContentItems);
+
+                        const endTime = Date.now();
+                        console.log(`[${new Date().toISOString()}] Content items processing completed in ${(endTime - startTime) / 1000} seconds. (${totalItems}/${totalItems})`);
                     }
                     let pageTemplates = await this.createBaseTemplates();
 
@@ -1634,4 +2090,132 @@ export class push{
 
         }
    }
+
+
+   async updateContentItems(guid: string, locale: string, selectedContentItems: string){
+
+        let apiClient = new mgmtApi.ApiClient(this._options);
+        let fileOperation = new fileOperations();
+        let contentItemsArray: mgmtApi.ContentItem[] = [];
+
+        fileOperation.createLogFile('logs', 'instancelog');
+
+        console.log('Updating content items...', selectedContentItems.split(', '));
+        // only push the listed content items
+        const contentItemArr = selectedContentItems.split(',');
+
+        if (contentItemArr && contentItemArr.length > 0) {
+            const validBar1 = this._multibar.create(contentItemArr.length, 0);
+            validBar1.update(0, {name : 'Updating items'});
+
+            let index = 1;
+            let successfulItems = [];
+            let notOnDestination = [];
+            let notOnSource = [];
+            let modelMismatch = [];
+
+            for (let i = 0; i < contentItemArr.length; i++) {
+                let contentItemId = parseInt(contentItemArr[i], 10);
+              
+                index += 1;   
+
+
+                // make sure that the desitination instance has the content item ID
+                try {
+                    await apiClient.contentMethods.getContentItem(contentItemId, guid, locale);
+                } catch {
+                    notOnDestination.push(contentItemId);
+                    this.skippedContentItems[contentItemId] = contentItemId.toString();
+                    fileOperation.appendLogFile(`\n There was a problem reading content item ID ${contentItemId}`);
+                    // continue;
+                }
+
+               
+
+
+                try {
+                    let file = fileOperation.readFile(`.agility-files/${locale}/item/${contentItemId}.json`);
+                    let contentItem = JSON.parse(file) as mgmtApi.ContentItem;
+
+                    try {
+                        
+                        let containerFile = fileOperation.readFile(`.agility-files/containers/${this.camelize(contentItem.properties.referenceName)}.json`);
+                        let container = JSON.parse(containerFile) as mgmtApi.Container;
+                        
+                        const modelId = container.contentDefinitionID;
+                        let modelFile = fileOperation.readFile(`.agility-files/models/${modelId}.json`);
+                        let model = JSON.parse(modelFile) as mgmtApi.Model;
+
+                        let currentmodel = await apiClient.modelMethods.getContentModel(modelId, guid);
+                    
+                        const modelFields = model.fields.map(field => ({ name: field.name, type: field.type }));
+                        const currentModelFields = currentmodel.fields.map(field => ({ name: field.name, type: field.type }));
+
+                        const missingFields = modelFields.filter(field => !currentModelFields.some(currentField => currentField.name === field.name && currentField.type === field.type));
+                        const extraFields = currentModelFields.filter(currentField => !modelFields.some(field => field.name === currentField.name && field.type === currentField.type));
+
+                        if (missingFields.length > 0) {
+                            console.log(`Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                            fileOperation.appendLogFile(`\n Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                        }
+
+                        if (extraFields.length > 0) {
+                            console.log(`Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                            fileOperation.appendLogFile(`\n Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                        }
+
+                        if(!missingFields.length && !extraFields.length){
+
+                            try {
+                            
+                                await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
+                                
+                            
+                            } catch {
+                                this.skippedContentItems[contentItemId] = contentItemId.toString();
+                                fileOperation.appendLogFile(`\n Unable to update content item ID ${contentItemId}`);
+                                continue;
+                            }
+
+
+                            contentItemsArray.push(contentItem);
+                            successfulItems.push(contentItemId);
+                            // continue;
+                        } else {
+                            modelMismatch.push(contentItemId);
+                            fileOperation.appendLogFile(`\n Model mismatch for content item ID ${contentItemId}`);
+                            continue;
+                        }
+
+                    } catch(err) {
+
+                        console.log('Container - > Error', err)
+                        this.skippedContentItems[contentItemId] = contentItemId.toString();
+                        fileOperation.appendLogFile(`\n Unable to find a container for content item ID ${contentItemId}`);
+                        continue;
+                    }
+                } catch {
+                    notOnSource.push(contentItemId);
+                    this.skippedContentItems[contentItemId] = contentItemId.toString();
+                    fileOperation.appendLogFile(`\n There was a problem reading .agility-files/${locale}/item/${contentItemId}.json`);
+                    continue;
+                }
+
+                validBar1.update(index);
+            }
+
+
+            // validBar1.stop()
+
+
+            
+            return {
+                contentItemsArray,
+                successfulItems,
+                notOnDestination,
+                notOnSource,
+                modelMismatch
+            }
+        }
+    }
 }
