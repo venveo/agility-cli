@@ -1628,7 +1628,7 @@ export class push{
                 
                 await this.pushLinkedModels(linkedModels, guid);
                 let containerModels = models
-                
+
                 if(containers){
                     await this.pushContainers(containers, containerModels, guid);
                     let contentItems = await this.getBaseContentItems(guid, locale);
@@ -1664,130 +1664,108 @@ export class push{
    }
 
 
-   async updateContentItems(guid: string, locale: string, selectedContentItems: string){
+async updateContentItems(guid: string, locale: string, selectedContentItems: string) {
+    const apiClient = new mgmtApi.ApiClient(this._options);
+    const fileOperation = new fileOperations();
+    const contentItemsArray: mgmtApi.ContentItem[] = [];
 
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let fileOperation = new fileOperations();
-        let contentItemsArray: mgmtApi.ContentItem[] = [];
+    fileOperation.createLogFile('logs', 'instancelog');
 
-        fileOperation.createLogFile('logs', 'instancelog');
+    console.log('Updating content items...', selectedContentItems.split(', '));
+    const contentItemArr = selectedContentItems.split(',');
 
-        console.log('Updating content items...', selectedContentItems.split(', '));
-        // only push the listed content items
-        const contentItemArr = selectedContentItems.split(',');
+    if (contentItemArr && contentItemArr.length > 0) {
+        const validBar1 = this._multibar.create(contentItemArr.length, 0);
+        validBar1.update(0, { name: 'Updating items' });
 
-        if (contentItemArr && contentItemArr.length > 0) {
-            const validBar1 = this._multibar.create(contentItemArr.length, 0);
-            validBar1.update(0, {name : 'Updating items'});
+        let index = 1;
+        const successfulItems = [];
+        const notOnDestination = [];
+        const notOnSource = [];
+        const modelMismatch = [];
 
-            let index = 1;
-            let successfulItems = [];
-            let notOnDestination = [];
-            let notOnSource = [];
-            let modelMismatch = [];
+        for (let i = 0; i < contentItemArr.length; i++) {
+            const contentItemId = parseInt(contentItemArr[i], 10);
+            index += 1;
 
-            for (let i = 0; i < contentItemArr.length; i++) {
-                let contentItemId = parseInt(contentItemArr[i], 10);
-              
-                index += 1;   
+            try {
+                await apiClient.contentMethods.getContentItem(contentItemId, guid, locale);
+            } catch {
+                notOnDestination.push(contentItemId);
+                this.skippedContentItems[contentItemId] = contentItemId.toString();
+                fileOperation.appendLogFile(`\n There was a problem reading content item ID ${contentItemId}`);
+                continue;
+            }
 
-
-                // make sure that the desitination instance has the content item ID
-                try {
-                    await apiClient.contentMethods.getContentItem(contentItemId, guid, locale);
-                } catch {
-                    notOnDestination.push(contentItemId);
-                    this.skippedContentItems[contentItemId] = contentItemId.toString();
-                    fileOperation.appendLogFile(`\n There was a problem reading content item ID ${contentItemId}`);
-                    // continue;
-                }
-
-               
-
+            try {
+                const file = fileOperation.readFile(`.agility-files/${locale}/item/${contentItemId}.json`);
+                const contentItem = JSON.parse(file) as mgmtApi.ContentItem;
 
                 try {
-                    let file = fileOperation.readFile(`.agility-files/${locale}/item/${contentItemId}.json`);
-                    let contentItem = JSON.parse(file) as mgmtApi.ContentItem;
+                    const containerFile = fileOperation.readFile(`.agility-files/containers/${this.camelize(contentItem.properties.referenceName)}.json`);
+                    const container = JSON.parse(containerFile) as mgmtApi.Container;
 
-                    try {
-                        
-                        let containerFile = fileOperation.readFile(`.agility-files/containers/${this.camelize(contentItem.properties.referenceName)}.json`);
-                        let container = JSON.parse(containerFile) as mgmtApi.Container;
-                        
-                        const modelId = container.contentDefinitionID;
-                        let modelFile = fileOperation.readFile(`.agility-files/models/${modelId}.json`);
-                        let model = JSON.parse(modelFile) as mgmtApi.Model;
+                    const modelId = container.contentDefinitionID;
+                    const modelFile = fileOperation.readFile(`.agility-files/models/${modelId}.json`);
+                    const model = JSON.parse(modelFile) as mgmtApi.Model;
 
-                        let currentmodel = await apiClient.modelMethods.getContentModel(modelId, guid);
-                    
-                        const modelFields = model.fields.map(field => ({ name: field.name, type: field.type }));
-                        const currentModelFields = currentmodel.fields.map(field => ({ name: field.name, type: field.type }));
+                    const currentModel = await apiClient.modelMethods.getContentModel(modelId, guid);
 
-                        const missingFields = modelFields.filter(field => !currentModelFields.some(currentField => currentField.name === field.name && currentField.type === field.type));
-                        const extraFields = currentModelFields.filter(currentField => !modelFields.some(field => field.name === currentField.name && field.type === currentField.type));
+                    const modelFields = model.fields.map(field => ({ name: field.name, type: field.type }));
+                    const currentModelFields = currentModel.fields.map(field => ({ name: field.name, type: field.type }));
 
-                        if (missingFields.length > 0) {
-                            console.log(`Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                            fileOperation.appendLogFile(`\n Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                        }
+                    const missingFields = modelFields.filter(field => !currentModelFields.some(currentField => currentField.name === field.name && currentField.type === field.type));
+                    const extraFields = currentModelFields.filter(currentField => !modelFields.some(field => field.name === currentField.name && field.type === currentField.type));
 
-                        if (extraFields.length > 0) {
-                            console.log(`Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                            fileOperation.appendLogFile(`\n Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                        }
+                    if (missingFields.length > 0) {
+                        console.log(`Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                        fileOperation.appendLogFile(`\n Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                    }
 
-                        if(!missingFields.length && !extraFields.length){
+                    if (extraFields.length > 0) {
+                        console.log(`Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                        fileOperation.appendLogFile(`\n Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
+                    }
 
-                            try {
-                            
-                                await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
-                                
-                            
-                            } catch {
-                                this.skippedContentItems[contentItemId] = contentItemId.toString();
-                                fileOperation.appendLogFile(`\n Unable to update content item ID ${contentItemId}`);
-                                continue;
-                            }
-
-
-                            contentItemsArray.push(contentItem);
-                            successfulItems.push(contentItemId);
-                            // continue;
-                        } else {
-                            modelMismatch.push(contentItemId);
-                            fileOperation.appendLogFile(`\n Model mismatch for content item ID ${contentItemId}`);
+                    if (!missingFields.length && !extraFields.length) {
+                        try {
+                            await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
+                        } catch {
+                            this.skippedContentItems[contentItemId] = contentItemId.toString();
+                            fileOperation.appendLogFile(`\n Unable to update content item ID ${contentItemId}`);
                             continue;
                         }
 
-                    } catch(err) {
-
-                        console.log('Container - > Error', err)
-                        this.skippedContentItems[contentItemId] = contentItemId.toString();
-                        fileOperation.appendLogFile(`\n Unable to find a container for content item ID ${contentItemId}`);
+                        contentItemsArray.push(contentItem);
+                        successfulItems.push(contentItemId);
+                    } else {
+                        modelMismatch.push(contentItemId);
+                        fileOperation.appendLogFile(`\n Model mismatch for content item ID ${contentItemId}`);
                         continue;
                     }
-                } catch {
-                    notOnSource.push(contentItemId);
+                } catch (err) {
+                    console.log('Container - > Error', err);
                     this.skippedContentItems[contentItemId] = contentItemId.toString();
-                    fileOperation.appendLogFile(`\n There was a problem reading .agility-files/${locale}/item/${contentItemId}.json`);
+                    fileOperation.appendLogFile(`\n Unable to find a container for content item ID ${contentItemId}`);
                     continue;
                 }
-
-                validBar1.update(index);
+            } catch {
+                notOnSource.push(contentItemId);
+                this.skippedContentItems[contentItemId] = contentItemId.toString();
+                fileOperation.appendLogFile(`\n There was a problem reading .agility-files/${locale}/item/${contentItemId}.json`);
+                continue;
             }
 
-
-            // validBar1.stop()
-
-
-            
-            return {
-                contentItemsArray,
-                successfulItems,
-                notOnDestination,
-                notOnSource,
-                modelMismatch
-            }
+            validBar1.update(index);
         }
+
+        return {
+            contentItemsArray,
+            successfulItems,
+            notOnDestination,
+            notOnSource,
+            modelMismatch
+        };
     }
+}
 }
