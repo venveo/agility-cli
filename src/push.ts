@@ -144,9 +144,6 @@ export class push{
     }
 
     getBaseContainers(){
-
-        // the naming for this is weird, it should be, getBaseContainers
-
         let fileOperation = new fileOperations();
         try{
             
