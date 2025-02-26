@@ -31,7 +31,13 @@
 2. To push an instance use the command ```agility push --guid="<<Provide the target Instance guid>> --locale="<<Provide the locale of the Instance>>"```
 3. For instance cloning, this command is a mix of push and pull. Use the command ```agility clone --sourceGuid="<<Provide Guid of your source Instance>>" --targetGuid="<<Provide the target Instance guid>>" --locale="<<Provide the locale of the Instance>>" --channel="<<Provide the channel to be cloned>>"``` to perform cloning between instances.
 4. To sync Models use the command ```agility sync-models --sourceGuid="<<Optional Parameter Guid of your source instance>>" --targetGuid="<<Optional Parameter Guid of your target Instance>>" --pull="<<Optional Parameter value true/false>>" --dryRun="<<Optional Parameter value true/false>>" --filter="<<Optional Parameter folder path where filter file is present. Ex: - C:\Agility\filterModels.json" --folder="<<Optional Parameter name of the folder where files to be exported. If no value is provided, files will be exported to .agility-files folder>>"```.
-5. To access the error logs, navigate to .agility-files/logs/instancelog.txt
+5. To update content in an instance - ```agility updatecontent --guid="<<Provide the target instance guid>>" --locale="<<Provide the locale of the Instance>>" --contentItems="<<The ID's of the content items you want to update>>"```
+
+Note: To update content in an instance, you need to make sure your local ID's match the target instance ID's. If you just pushed your instance to another instance, you may need to pull down the target instance so data and ID's matches correctly. 
+
+6. To publish content in an instance - ```agility publishcontent --guid="<<Provide the target instance guid>>" --locale="<<Provide the locale of the Instance>>" --contentItems="<<The ID's of the content items you want to update>>"```
+
+7. To access the error logs, navigate to .agility-files/logs/instancelog.txt
 
 #### Model Sync File samples
 1. To generate the filter file, use the following JSON format for models and templates: -
