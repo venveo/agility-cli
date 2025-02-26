@@ -10,10 +10,10 @@
     axios "^0.21.1"
     axios-cache-adapter "^2.4.1"
 
-"@agility/content-sync@^1.1.5":
-  version "1.1.5"
-  resolved "https://registry.npmjs.org/@agility/content-sync/-/content-sync-1.1.5.tgz"
-  integrity sha512-O1e3pWZCBCQhz5Qnqq8aJixJpS6FAGtR/HnaAAlvHi792tn6j1Xk5K6xtYLNvvy1J7IouqMZz+so/NLp3hLyrA==
+"@agility/content-sync@^1.1.9":
+  version "1.1.9"
+  resolved "https://registry.yarnpkg.com/@agility/content-sync/-/content-sync-1.1.9.tgz#e1b9d8aff5fa4fe5856af1a675ef149c5404b0d9"
+  integrity sha512-3nNx5YH4SDAJ0r+KNfiEEy84Z1ppJwtWxK/J0nLKaZtz7YzAoPfV0FDCUbuP+0vwrIaKasTpyEHgzLodsejgJw==
   dependencies:
     "@agility/content-fetch" "^1.0.0"
     dotenv "^8.2.0"
@@ -95,7 +95,7 @@ axios-cache-adapter@^2.4.1:
     cache-control-esm "1.0.0"
     md5 "^2.2.1"
 
-axios@^0.21.1, axios@~0.21.1:
+axios@^0.21.1:
   version "0.21.4"
   resolved "https://registry.npmjs.org/axios/-/axios-0.21.4.tgz"
   integrity sha512-ut5vewkiu8jjGBdqpM44XxjuCjq9LAKeHVmoVfHVzy8eHgxxq8SbAVQNovDA8mVi05kP0Ea/n/UzcSHcTJQfNg==

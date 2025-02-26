@@ -80,7 +80,7 @@ export class modelSync{
             models = filterModels;
         }
         else{
-            models = pushOperation.createBaseModels(baseFolder);
+            models = pushOperation.getBaseModels(baseFolder);
         }
         if(models){
             let linkedModels = await pushOperation.getLinkedModels(models);
@@ -134,7 +134,7 @@ export class modelSync{
         let models: mgmtApi.Model[] = [];
         progressBar.update(0, {name : 'Validating and Creating Model Object for model filter.'});
         let index = 1;
-        let sourceModels = pushOperation.createBaseModels(baseFolder);
+        let sourceModels = pushOperation.getBaseModels(baseFolder);
         for(let i = 0; i < referenceNames.length; i++){
             let referenceName = referenceNames[i];
             let model = sourceModels.find(x=> x.referenceName === referenceName);
@@ -183,7 +183,7 @@ export class modelSync{
             models = filterModels;
         }
         else{
-            models = pushOperation.createBaseModels(baseFolder);
+            models = pushOperation.getBaseModels(baseFolder);
         }
         const modelDifferences: any = [] = [];
         //let dryRunModels: mgmtApi.Model[] = []

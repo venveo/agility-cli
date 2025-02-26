@@ -1,6 +1,6 @@
 {
   "name": "@agility/cli",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "description": "Agility CLI for working with your content.",
   "repository": {
     "type": "git",
@@ -28,7 +28,8 @@
   "contributors": [
     "Joel Varty",
     "Mohit Vashishtha",
-    "Kevin Tran"
+    "Kevin Tran",
+    "Aaron Taylor"
   ],
   "license": "ISC",
   "bin": {

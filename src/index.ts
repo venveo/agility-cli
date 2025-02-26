@@ -17,6 +17,7 @@ const inquirer = require('inquirer');
 import { createMultibar } from './multibar';
 import { modelSync } from './modelSync';
 import { FilterData, ModelFilter } from "./models/modelFilter";
+import { exit } from "process";
 
 let auth: Auth
 let options: mgmtApi.Options;
@@ -415,6 +416,7 @@ yargs.command({
     handler: async function(argv) {
        let guid: string = argv.guid as string;
        let locale: string = argv.locale as string;
+       let update: boolean = argv.update as boolean;
        let code = new fileOperations();
        auth = new Auth();
        let codeFileStatus = code.codeFileExists();
@@ -440,46 +442,6 @@ yargs.command({
                 if(permitted){
                     console.log(colors.yellow('Pushing your instance...'));
                     let pushSync = new push(options, multibar);
-
-                /*
-                TODO: Inquirer for Content and Pages.
-                    let modelSync = new model(options, multibar);
-                    let existingModels = await modelSync.validateModels(guid);
-
-                    let containerSync = new container(options, multibar);
-                    let existingContainers = await containerSync.validateContainers(guid);
-
-                    let duplicates: string[] = [];
-
-                    if(existingModels){
-                            for(let i = 0; i < existingModels.length; i++){
-                                duplicates.push(existingModels[i]);
-                            }
-                    }
-                    if(existingContainers){
-                            for(let i = 0; i < existingContainers.length; i++){
-                                duplicates.push(existingContainers[i]);
-                            }
-                    }
-
-                
-                    if(duplicates.length > 0){
-                    await inquirer.prompt([
-                            {
-                                type: 'confirm',
-                                name: 'duplicates',
-                                message: 'Found duplicate(s) Models and Containers. Overwrite the models and containers? '
-                            }
-                        ]).then((answers: { duplicates: boolean; })=> {
-
-                            if(!answers.duplicates){
-                                    if(existingContainers)
-                                        containerSync.deleteContainerFiles(existingContainers);
-                                    if(existingModels)
-                                        modelSync.deleteModelFiles(existingModels);
-                                }
-                        })
-                    }*/
                      await pushSync.pushInstance(guid, locale);
                 }
                 else{
@@ -501,6 +463,200 @@ yargs.command({
        }
     }
 })
+
+yargs.command({
+    command: 'updatecontent',
+    describe: 'Update a specific content ID or list of content IDs.',
+    builder: {
+        guid: {
+            describe: 'Provide the target guid to update your instance.',
+            demandOption: true,
+            type: 'string'
+        },
+        locale: {
+            describe: 'Provide the locale to update your instance.',
+            demandOption: true,
+            type: 'string'
+        },
+        contentItems: {
+            describe: 'What content items to update',
+            demandOption: false,
+            type: 'string',
+            default: 'all'
+        }
+    },
+    handler: async function(argv) {
+        const guid: string = argv.guid as string;
+        const locale: string = argv.locale as string;
+        const contentItems: string = argv.contentItems as string;
+
+        const code = new fileOperations();
+        auth = new Auth();
+        const codeFileStatus = code.codeFileExists();
+
+        if (codeFileStatus) {
+            const agilityFolder = code.cliFolderExists();
+            if (agilityFolder) {
+                const data = JSON.parse(code.readTempFile('code.json'));
+
+                const multibar = createMultibar({ name: 'Push' });
+
+                const form = new FormData();
+                form.append('cliCode', data.code);
+
+                const token = await auth.cliPoll(form, guid);
+
+                options = new mgmtApi.Options();
+                options.token = token.access_token;
+
+                const user = await auth.getUser(guid, token.access_token);
+                if (user) {
+                    const permitted = await auth.checkUserRole(guid, token.access_token);
+                    if (permitted) {
+                        console.log('-----------------------------------------------');
+                        console.log(colors.yellow('Updating your content items...'));
+                        console.log('Content items will be in preview state and changes will need to be published.');
+                        console.log('-----------------------------------------------');
+
+                        const pushSync = new push(options, multibar);
+                        const action = await pushSync.updateContentItems(guid, locale, contentItems);
+                        multibar.stop();
+
+                        const total = contentItems.split(',').length;
+                        const successful = action.successfulItems.length;
+
+                        if (successful < total) {
+                            console.log(colors.yellow(`${successful} out of ${total} content items were successfully updated.`));
+                            if (action.notOnDestination.length > 0) {
+                                console.log(colors.yellow('Not found on destination instance'), action.notOnDestination);
+                            }
+
+                            if (action.notOnSource.length > 0) {
+                                console.log(colors.yellow('Not found in local files'), action.notOnSource);
+                            }
+
+                            if (action.modelMismatch.length > 0) {
+                                console.log(colors.yellow('Model mismatch on destination instance'), action.modelMismatch);
+                            }
+                        } else {
+                            console.log(colors.green(`${successful} out of ${total} content items were successfully updated.`));
+                        }
+
+                    } else {
+                        console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
+                    }
+
+                } else {
+                    console.log(colors.red('Please authenticate first to perform the push operation.'));
+                }
+
+            } else {
+                console.log(colors.red('Please pull an instance first to push an instance.'));
+            }
+
+        } else {
+            console.log(colors.red('Please authenticate first to perform the push operation.'));
+        }
+    }
+});
+
+
+
+yargs.command({
+    command: 'publishcontent',
+    describe: 'Publish a specific content ID or list of content IDs.',
+    builder: {
+        guid: {
+            describe: 'Provide the target guid to update your instance.',
+            demandOption: true,
+            type: 'string'
+        },
+        locale: {
+            describe: 'Provide the locale to update your instance.',
+            demandOption: true,
+            type: 'string'
+        },
+        contentItems: {
+            describe: 'What content items to update',
+            demandOption: false,
+            type: 'string',
+            default: ''
+        }
+    },
+    handler: async function(argv) {
+        const guid: string = argv.guid as string;
+        const locale: string = argv.locale as string;
+        const contentItems: number[] = (argv.contentItems as string).split(',').map(Number);
+
+        const code = new fileOperations();
+        auth = new Auth();
+        const codeFileStatus = code.codeFileExists();
+
+        if (codeFileStatus) {
+            const agilityFolder = code.cliFolderExists();
+            if (agilityFolder) {
+                const data = JSON.parse(code.readTempFile('code.json'));
+
+                const multibar = createMultibar({ name: 'Publish' });
+                const bar = await multibar.create(contentItems.length, 0, { name: 'Publishing'});
+
+                const form = new FormData();
+                form.append('cliCode', data.code);
+
+                const token = await auth.cliPoll(form, guid);
+
+                options = new mgmtApi.Options();
+                options.token = token.access_token;
+
+                const user = await auth.getUser(guid, token.access_token);
+                if (user) {
+                    const permitted = await auth.checkUserRole(guid, token.access_token);
+                    if (permitted) {
+                        console.log('-----------------------------------------------');
+                        console.log(colors.yellow('Publishing your content items...'));
+                        console.log('-----------------------------------------------');
+                        const apiClient = new mgmtApi.ApiClient(options);
+                        
+                        for (const contentItem of contentItems) {
+                            try {
+                                await apiClient.contentMethods.publishContent(contentItem, guid, locale);
+                                await bar.increment();
+                            } catch (error) {
+                                console.error(`Failed to publish content item ${contentItem}:`, error);
+                            }
+                        }
+
+                        await bar.update(contentItems.length, { name: 'Published!' });
+
+                        await bar.stop();
+
+                        setTimeout(() => {
+                            console.log(colors.green('Content items have been published.'));
+                            exit(1);
+                        }, 1000);
+
+                    } else {
+                        console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
+                        exit(1);
+                    }
+
+                } else {
+                    console.log(colors.red('Please authenticate first to perform the push operation.'));
+                    exit(1);
+                }
+
+            } else {
+                console.log(colors.red('Please pull an instance first to push an instance.'));
+                exit(1)
+            }
+
+        } else {
+            console.log(colors.red('Please authenticate first to perform the push operation.'));
+            exit(1);
+        }
+    }
+});
+
 
 yargs.command({
     command: 'clone',
