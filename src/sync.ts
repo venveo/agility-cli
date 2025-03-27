@@ -39,11 +39,11 @@ export class sync{
         isPreview: this._isPreview
       })
 
-      await syncClient.runSync();
+      const sync = await syncClient.runSync();
 
       // we need to move these files to the correct location
       const sourceDir = path.join('.agility-files', this._locale);
-      const destDir = path.join('.agility-files', this._guid);
+      const destDir = path.join(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}`);
 
       if (!fs.existsSync(destDir)) {
          fs.mkdirSync(destDir, { recursive: true });
@@ -51,6 +51,7 @@ export class sync{
 
       // move the sync files to the correct location
       fs.readdirSync(sourceDir).forEach(file => {
+
          const sourceFile = path.join(sourceDir, file);
          const destFile = path.join(destDir, file);
          if (fs.lstatSync(sourceFile).isDirectory()) {

@@ -3,8 +3,10 @@ import { cliToken } from './models/cliToken';
 import { fileOperations } from './fileOperations';
 import { serverUser } from './models/serverUser';
 import { WebsiteUser } from './models/websiteUser';
+import { forceDevMode, forceLocalMode } from '.';
 const open = require('open');
 
+// declare let forceDevMode: boolean;
 
 export class Auth{
 
@@ -17,10 +19,14 @@ export class Auth{
     }
 
     determineBaseUrl(guid: string, userBaseUrl: string = null): string{
+
         if(userBaseUrl){
             return userBaseUrl;
         }
-        if(guid?.endsWith('d')){
+        if(forceLocalMode){
+            return "https://localhost:5050";
+        }
+        if(guid?.endsWith('d') || forceDevMode){
             return "https://mgmt-dev.aglty.io";
         }
         else if(guid?.endsWith('u')){
@@ -47,7 +53,10 @@ export class Auth{
      }
 
      getInstancePoll() : AxiosInstance{
-        let baseURL = "https://mgmt.aglty.io";
+        let baseURL = forceDevMode ? "https://mgmt-dev.aglty.io":"https://mgmt.aglty.io"; 
+        if(forceLocalMode){
+            baseURL = "https://localhost:5050";
+        }  
         let instance =  axios.create({
             baseURL: `${baseURL}/oauth`
         })
@@ -107,8 +116,21 @@ export class Auth{
     }
     async authorize(){
         let code = await this.generateCode();
-        //let url = `https://mgmt-dev.aglty.io/oauth/Authorize?response_type=code&redirect_uri=https://mgmt-dev.aglty.io/oauth/CliAuth&state=cli-code%2e${code}`;
-        let url = `https://mgmt.aglty.io/oauth/Authorize?response_type=code&redirect_uri=https://mgmt.aglty.io/oauth/CliAuth&state=cli-code%2e${code}`;
+
+
+        let localDevUrl = `https://localhost:5050/oauth/Authorize?response_type=code&redirect_uri=https://localhost:5050/oauth/CliAuth&state=cli-code%2e${code}`;
+        let devUrl = `https://mgmt-dev.aglty.io/oauth/Authorize?response_type=code&redirect_uri=https://mgmt-dev.aglty.io/oauth/CliAuth&state=cli-code%2e${code}`;
+        let prodUrl = `https://mgmt.aglty.io/oauth/Authorize?response_type=code&redirect_uri=https://mgmt.aglty.io/oauth/CliAuth&state=cli-code%2e${code}`;
+        
+        let url = prodUrl;
+        if(forceDevMode){
+            url = devUrl;
+        }
+
+        if(forceLocalMode){
+        url = localDevUrl;
+        }
+
         await open(url);
         let codeFile = new fileOperations();
         codeFile.createTempFile('code.json', `{"code": "${code}"}`);
@@ -182,21 +204,28 @@ export class Auth{
         
         let baseUrl = this.determineBaseUrl(guid);
 
-
-        let instance =  axios.create({
-            baseURL: `${baseUrl}/api/v1/`
-        })
         let apiPath = '/users/me';
-        try{
-            const resp = await instance.get(apiPath, {
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Cache-Control': 'no-cache'
-                }
-              })
-            return resp.data as serverUser;
-        } catch{
-           return null;
+
+        let endpoint = `${baseUrl}/api/v1${apiPath}`;
+        try {
+            const response = await fetch(endpoint, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Cache-Control': 'no-cache'
+            }
+            });
+
+            if (!response.ok) {
+            throw new Error('Network response was not ok');
+            }
+
+            const data = await response.json();
+            // console.log('response', data);
+            return data as serverUser;
+        } catch (error) {
+            console.error('Fetch error:', error);
+            return null;
         }
     }
 }

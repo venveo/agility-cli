@@ -18,14 +18,9 @@ export async function homePrompt(prompt?: any) {
         choices: [
 
           new inquirer.Separator(),
-          "Download assets, models & content from an instance", // pull
-          "Push downloaded assets, models & content to an instance", // push
-        //   "Push models & content to an instance", // push, sync
-        //   "Clone instance to another instance", // clone
-            new inquirer.Separator(),
           "Instances",
           "List instances",
-        //   "Fetch API",
+        //"Fetch API",
           new inquirer.Separator(),
           "Logout",
         ],
@@ -33,15 +28,6 @@ export async function homePrompt(prompt?: any) {
     ])
     .then(async (answers: { option: string }) => {
       switch (answers.option) {
-        case "Download assets, models & content from an instance":
-          pullFiles();
-          break;
-        // case "Push models & content to an instance":
-        //   pushFiles();
-        //   break;
-        // case "Clone instance to another instance":
-        //   cloneInstance();
-        //   break;
         case "Instances":
             
             const selectedInstance = await instanceSelector();

@@ -3,6 +3,8 @@ import { Auth } from "../../auth";
 import { fileOperations } from "../../fileOperations";
 
 import colors from "ansi-colors";
+import { homePrompt } from "../home";
+import { logout } from "../logout";
 const FormData = require("form-data");
 
 export async function instanceSelector() {
@@ -14,7 +16,20 @@ export async function instanceSelector() {
   form.append("cliCode", data.code);
 
   let token = await auth.cliPoll(form, null);
+
+  // console.log("Token: ", token);
   let user = await auth.getUser(null, token.access_token);
+
+  // console.log("User: ", user);
+  if(!user) {
+    // if there's no user coming back its because the user is not authed
+    await logout();
+    await auth.authorize(false);
+    homePrompt();
+    return;
+  }
+
+
   let instances = user.websiteAccess;
 
   const instanceChoices = instances.map((instance: any) => ({

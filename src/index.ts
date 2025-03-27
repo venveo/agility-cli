@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 import * as yargs from "yargs";
 import { Auth } from "./auth";
@@ -22,25 +23,51 @@ import { create } from "domain";
 import { homePrompt } from "./prompts/home";
 
 let auth: Auth;
+export let forceDevMode: boolean = false;
+export let forceLocalMode: boolean = false;
+export let localServer: string
+export let token: string = null;
+
 let options: mgmtApi.Options;
 
 yargs.version("0.0.1_beta").demand(1).exitProcess(false);
 
 
 console.log(colors.yellow("Welcome to Agility CLI."));
-
 yargs.command({
   command: "$0",
   describe: "Default command",
-  handler: async function () {
+  builder: {
+    dev: {
+      describe: "Enable developer mode",
+      type: "boolean",
+      default: false,
+    },
+  },
+  handler: async function (argv) {
     let auth = new Auth();
     let isAuthenticated = false;
 
     let code = new fileOperations();
     let codeFileStatus = code.codeFileExists();
 
+    if(argv.dev){
+      console.log(colors.yellow("🟢 Connected to Agility Dev Servers"));
+      forceDevMode = true;
+    }
+
+    if(argv.local){
+      console.log(colors.yellow("🟢 Connected to https://localhost:5050"));
+      forceLocalMode = true;
+    }
+
+    if(!argv.dev && !argv.local){
+      console.log(colors.yellow("🟢 Connected to Agility Production Servers"));
+    }
+
+
     if (!codeFileStatus) {
-      console.log(colors.red("Launching authentication in browser..."));
+      console.log(colors.red(`Launching ${argv.dev ? 'dev':'prod'} authentication in browser...`));
       auth.authorize();
     }
 
@@ -48,31 +75,38 @@ yargs.command({
       let code = new fileOperations();
       if (code.codeFileExists()) {
         isAuthenticated = true;
-        console.log(colors.green("You have successfuly authenticated."));
+        console.log(colors.green("You have successfully authenticated."));
         clearInterval(interval);
-        homePrompt()
+        homePrompt();
       }
     }, 1000); // Check every second
-  } 
+  },
 });
 
 yargs.command({
-    command: 'login',
-    describe: 'Login to Agility.',
-    handler: async function() {
-        auth = new Auth();
-        await auth.authorize();
-    }
-})
+  command: "login",
+  describe: "Login to Agility.",
+  builder: {
+    dev: {
+      describe: "Enable developer mode",
+      type: "boolean",
+      default: false,
+    },
+  },
+  handler: async function (argv) {
+    auth = new Auth();
+    await auth.authorize(argv.dev);
+  },
+});
 
 yargs.command({
-    command: "logout",
-    describe: "Log out of Agility.",
-    handler: async function () {
-      let code = new fileOperations();
-      code.deleteCodeFile();
-    },
-  });
+  command: "logout",
+  describe: "Log out of Agility.",
+  handler: async function () {
+    let code = new fileOperations();
+    code.deleteCodeFile();
+  },
+});
   
   
 // yargs.command({

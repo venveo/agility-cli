@@ -90,7 +90,7 @@ export class modelSync{
                 let index = 1;
                 for(let i = 0; i < normalModels.length; i++){
                     let normalModel = normalModels[i];
-                    let model = await pushOperation.pushNormalModels(normalModel, guid);
+                    let model = await pushOperation.pushNormalModels(normalModel, guid, guid);
                     processedModels.push(model);
                     progressBar3.update(index);
                     index += 1;
@@ -116,7 +116,7 @@ export class modelSync{
                 pageTemplates = await pushOperation.createBaseTemplates(baseFolder);
             }
             if(pageTemplates){
-               let createdTemplates =  await pushOperation.pushTemplates(pageTemplates, guid, locale);
+               let createdTemplates =  await pushOperation.pushTemplates(pageTemplates, guid, locale,true, guid);
                fileOperation.exportFiles('models-sync','createdTemplates', createdTemplates, baseFolder);
             }
         }

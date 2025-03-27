@@ -1,4 +1,5 @@
 import inquirer from "inquirer";
+import fuzzy from "fuzzy";
 import colors from "ansi-colors";
 import { instanceSelector } from "./instances/selector";
 import { homePrompt } from "./home";
@@ -14,8 +15,9 @@ import { fileOperations } from "../fileOperations";
 import { get } from "http";
 import { localePrompt } from "./locale";
 import { channelPrompt } from "./channel";
-import { baseUrlPrompt } from "./base-url";
+import { baseUrlPrompt, getBaseURLfromGUID } from "./base-url";
 import { isPreview } from "./isPreview";
+import { elementsPrompt } from "./elements";
 
 inquirer.registerPrompt('fuzzypath', require('inquirer-fuzzy-path'))
 
@@ -24,56 +26,26 @@ const FormData = require("form-data");
 let auth: Auth;
 let options: mgmtApi.Options;
 
-async function pathPrompt() {
-    const path = await inquirer.prompt([
-        {
-            type: 'fuzzypath',
-            name: 'path',
-            itemType: 'directory',
-            rootPath: '.',
-            message: 'Select the path to download the files',
-            suggestOnly: false,
-            depthLimit: 2,
-            root: '',
-            // default: '.agility_files',
-            excludePath: nodePath => nodePath.startsWith('node_modules'),
-            // depthLimit: 5
-        }
-    ]);
 
-    console.log(path.path);
-}
-
-
-export async function pullFiles() {
-
-
-    const instance = await instanceSelector();
+export async function pullFiles(instance: any) {
     
     const { guid, websiteName } = instance;
-    // console.log('------------------------------------------------');
-    // console.log(colors.green('●'), colors.green(` (${guid})`), colors.white(websiteName));
-    // console.log('------------------------------------------------');
-    // const selectedInstance = guid;
+
     const locale = await localePrompt();
     const channel = await channelPrompt();
     const preview = await isPreview();
-    const baseUrl = await baseUrlPrompt();
-
- 
-    const action:any = await pullPrompt(guid)
-
-
+    const baseUrl = await getBaseURLfromGUID(guid);
+    const elements:any = await elementsPrompt();
+    const action:any = await pullPrompt(guid);
+    
     // now handle the actions
     switch (action) {
       case "Download":
-        downloadFiles(guid, locale, channel, baseUrl, preview);
+        downloadFiles(guid, locale, channel, baseUrl, preview, elements);
         break;
       case "Push to another instance":
         let pushToInstance = await instanceSelector();
-
         console.log('🚀 ','Pushing ', guid, 'to ➡️', pushToInstance.guid);
-
         break;
       case "< Back to Home":
         homePrompt();
@@ -81,11 +53,10 @@ export async function pullFiles() {
       default:
         break;
     }
-
 }
 
 
-async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any) {
+async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any, elements: any) {
     auth = new Auth();
     let code = new fileOperations();
     let codeFileStatus = code.codeFileExists();
@@ -129,13 +100,30 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                     let containerSync = new container(options, multibar);
                     let modelSync = new model(options, multibar);
 
-                    await Promise.all([
-                        contentPageSync.sync(guid, locale, isPreview),
-                        modelSync.getModels(guid, locale, isPreview),
-                        containerSync.getContainers(guid, locale, isPreview),
-                        assetsSync.getAssets(guid, locale, isPreview),
-                        assetsSync.getGalleries(guid, locale, isPreview)
-                    ]);
+                    const syncTasks = [];
+
+                    if(elements.includes('Pages')){
+                        syncTasks.push(contentPageSync.sync(guid, locale, isPreview));
+                    }
+
+                    if(elements.includes('Models')){
+                        syncTasks.push(modelSync.getModels(guid, locale, isPreview));
+                    }
+
+                    if(elements.includes('Content Lists')){
+                        syncTasks.push(containerSync.getContainers(guid, locale, isPreview));
+                    }
+
+                    if(elements.includes('Assets')){
+                        syncTasks.push(assetsSync.getAssets(guid, locale, isPreview));
+                    }
+
+                    if(elements.includes('Galleries')){
+                        syncTasks.push(assetsSync.getGalleries(guid, locale, isPreview));
+                    }
+
+
+                    await Promise.all(syncTasks);
                     
                     multibar.stop()
                     // await new Promise(resolve => setTimeout(resolve, 500));

@@ -1,6 +1,21 @@
 import inquirer from "inquirer";
 
-export async function baseUrlPrompt() {
+
+export async function getBaseURLfromGUID(guid: string): Promise<string> {
+  let baseUrl = "https://mgmt.aglty.io";
+  if (guid.endsWith("-d")) {
+    baseUrl = "https://mgmt-dev.aglty.io";
+  } else if (guid.endsWith("-c")) {
+    baseUrl = "https://mgmt-ca.aglty.io";
+  } else if (guid.endsWith("-e")) {
+    baseUrl = "https://mgmt-eu.aglty.io";
+  } else if (guid.endsWith("-a")) {
+    baseUrl = "https://mgmt-au.aglty.io";
+  }
+  return baseUrl;
+}
+
+export async function baseUrlPrompt(guid) {
   const specifyRegionAnswer = await inquirer.prompt([
     {
       type: "confirm",

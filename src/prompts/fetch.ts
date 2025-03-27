@@ -2,7 +2,7 @@ import inquirer from 'inquirer';
 import { localePrompt } from './locale';
 import { channelPrompt } from './channel';
 import { isPreview } from './isPreview';
-import { baseUrlPrompt } from './base-url';
+import { baseUrlPrompt, getBaseURLfromGUID } from './base-url';
 import agilitySDK from '@agility/content-fetch'
 import process from 'process';
 
@@ -91,7 +91,7 @@ export async function fetchAPIPrompt(selectedInstance: any, keys: any) {
     const locale = await localePrompt();
     const channel = await channelPrompt();
     const preview = await isPreview();
-    const baseUrl = await baseUrlPrompt();    
+    const baseUrl = await getBaseURLfromGUID(guid);
     const apiKey = preview ? keys.previewKey : keys.fetchKey;
 
   

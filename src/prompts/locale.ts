@@ -5,8 +5,8 @@ export async function localePrompt() {
         {
             type: 'input',
             name: 'locale',
-            default: 'en-US',  // Default value
-            message: 'Please enter your locale:',
+            default: 'en-us',  // Default value
+            message: 'Please enter your locale (lowercase)',
         },
     ]);
 
