@@ -79,7 +79,7 @@ export class clone{
         
         let containerSync = new container(this.options,multibar);
 
-        await pushSync.pushInstance(this.targetGuid, this.locale);
+        await pushSync.pushInstance(this.sourceGuid, this.targetGuid, this.locale, false);
     }
 
 }

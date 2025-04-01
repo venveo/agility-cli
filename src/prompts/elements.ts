@@ -32,7 +32,7 @@ export async function elementsPrompt() {
               });
           
             }
-          }]).then(answers => {\
+          }]).then(answers => {
             return answers.elements;
           }
     );

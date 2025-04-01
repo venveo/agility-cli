@@ -24,7 +24,7 @@ export async function instanceSelector() {
   if(!user) {
     // if there's no user coming back its because the user is not authed
     await logout();
-    await auth.authorize(false);
+    await auth.authorize();
     homePrompt();
     return;
   }

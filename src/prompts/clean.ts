@@ -54,24 +54,30 @@ class Clean {
           {
             type: "confirm",
             name: "cleanInstance",
-            message: `Do you want to clean the instance with GUID: ${this._guid}? All files and content will be deleted.`,
+            message: `⚠️ Are you sure you want to clean ${this._websiteName} instance ${this._guid}? All files and content will be deleted.`,
             default: false,
           },
         ]);
 
         if (answers.cleanInstance) {
           console.log("\n");
-          // console.log(`Cleaning the instance with GUID: ${this._guid}`);
-          // console.log('\n');
 
-          await Promise.all([
-            this.cleanContent(mgmtApiClient, multibar),
-            this.cleanPages(mgmtApiClient, multibar),
-            this.cleanModels(mgmtApiClient, multibar),
-            this.cleanMedia(mgmtApiClient, multibar),
-          ]);
-
-          return true;
+          const content = await this.cleanContent(mgmtApiClient, multibar);
+          if (content) {
+            const pages = await this.cleanPages(mgmtApiClient, multibar);
+            if (pages) {
+              const containers = await this.cleanContainers(mgmtApiClient, multibar);
+              if (containers) {
+                const models = await this.cleanModels(mgmtApiClient, multibar);
+                if (models) {
+                  const media = await this.cleanMedia(mgmtApiClient, multibar);
+                  if (media) {
+                    return true;
+                  }
+                }
+              }
+            }
+          }
           // setTimeout(() => {
           //     multibar.stop();
 
@@ -83,6 +89,21 @@ class Clean {
     }
   }
 
+  async cleanContainers(apiClient: any, multibar: any) {
+    const containers = await apiClient.containerMethods.getContainerList(this._guid);
+    const progressBar = multibar.create(containers.length, 0);
+    progressBar.update(0, { name: "Deleting Containers" });
+    for (const container of containers) {
+      try {
+        await apiClient.containerMethods.deleteContainer(container.contentViewID, this._guid);
+        progressBar.increment();
+      } catch (err) {
+        console.log("Error deleting container");
+      }
+    }
+
+    return true;
+  }
   async cleanPages(apiClient: any, multibar: any) {
     const sitemap = await apiClient.pageMethods.getSitemap(this._guid, this._locale);
 
@@ -96,57 +117,63 @@ class Clean {
     const progressBar = multibar.create(totalPages, 0);
     progressBar.update(0, { name: "Deleting Pages" });
 
-    childPages.forEach(async (page) => {
+    for (const page of childPages) {
       try {
         await apiClient.pageMethods.deletePage(page.pageID, this._guid, this._locale);
         progressBar.increment();
       } catch (err) {
-        console.log("Error deleting page", err);
+        console.log("Error deleting page");
       }
-    });
+    }
 
-    parentPages.forEach(async (page) => {
-        try {
-          await apiClient.pageMethods.deletePage(page.pageID, this._guid, this._locale);
-          progressBar.increment();
-        } catch (err) {
-          console.log("Error deleting page", err);
-        }
-      });
+    for (const page of parentPages) {
+      try {
+        await apiClient.pageMethods.deletePage(page.pageID, this._guid, this._locale);
+        progressBar.increment();
+      } catch (err) {
+        console.log("Error deleting page");
+      }
+    }
 
-    
-    
+    return true;
   }
 
   async cleanContent(mgmt: any, multibar: any) {
     const containers = await mgmt.containerMethods.getContainerList(this._guid);
+
     // console.log('Containers', containers)
     const progressBar = multibar.create(containers.length, 0);
     progressBar.update(0, { name: "Deleting Content Lists" });
 
-    containers.forEach(async (container) => {
-      try {
-        const content = await mgmt.contentMethods.getContentList(container.referenceName, this._guid, this._locale);
-        content.forEach(async (contentItem) => {
-          await mgmt.contentMethods.deleteContent(contentItem.contentID, this._guid, this._locale);
-        });
-      } catch (err) {
-        // console.log("Error deleting content", err);
-      }
+    let content = [];
 
+    for (const container of containers) {
       try {
-        await mgmt.containerMethods.deleteContainer(container.contentViewID, this._guid);
+        content = await mgmt.contentMethods.getContentList(container.referenceName, this._guid, this._locale);
       } catch (err) {
-        // console.log("Error deleting container", err);
+
+        // the content list may not have been uploaded properly
+        // console.log("Error getting content list ->", err);
+      }
+      if (content) {
+        for (const contentItem of content) {
+          try {
+            await mgmt.contentMethods.deleteContent(contentItem.contentID, this._guid, this._locale);
+          } catch (err) {
+            console.log("Error deleting content", err);
+          }
+        }
+      } else {
+        console.log("No content list found in container", container);
       }
 
       progressBar.increment();
-    });
+    }
+    return true;
   }
 
   async cleanModels(mgmt: any, multibar: any) {
     const contentModels = await mgmt.modelMethods.getContentModules(true, this._guid);
-
     const componentModels = await mgmt.modelMethods.getPageModules(true, this._guid);
 
     let pageModels = [];
@@ -162,33 +189,34 @@ class Clean {
 
     const progressBar = multibar.create(totalModels, 0);
     progressBar.update(0, { name: "Deleting Models" });
-
-    contentModels.forEach(async (model) => {
+    for (const model of contentModels) {
       try {
         await mgmt.modelMethods.deleteModel(model.id, this._guid);
         progressBar.increment();
       } catch (err) {
-        console.log("Error deleting content model", err);
+        console.log("Error deleting content model");
       }
-    });
+    }
 
-    componentModels.forEach(async (model) => {
+    for (const model of componentModels) {
       try {
         await mgmt.modelMethods.deleteModel(model.id, this._guid);
         progressBar.increment();
       } catch (err) {
-        console.log("Error deleting component model", err);
+        console.log("Error deleting component model");
       }
-    });
+    }
 
-    pageModels.forEach(async (model) => {
+    for (const model of pageModels) {
       try {
         await mgmt.pageMethods.deletePageTemplate(this._guid, this._locale, model.pageTemplateID);
         progressBar.increment();
       } catch (err) {
-        console.log("Error deleting page model", err);
+        console.log("Error deleting page model");
       }
-    });
+    }
+
+    return true;
   }
 
   async cleanMedia(apiClient: any, multibar: any) {
@@ -197,6 +225,8 @@ class Clean {
 
     await assetsSync.deleteAllAssets(this._guid, this._locale, true);
     await assetsSync.deleteAllGalleries(this._guid, this._locale, true);
+
+    return true;
   }
 }
 

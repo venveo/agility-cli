@@ -154,6 +154,10 @@ export class fileOperations{
       files.push(readFile);
     })
 
+    // console.log(`Reading files from ${directory}`);
+    // console.log(files.slice(0, 3));
+    // console.log(`Total files: ${files.length}`);
+    // console.log('----------------------------------');
     return files;
   }
 

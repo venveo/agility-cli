@@ -21,7 +21,6 @@ export async function instancesPrompt(selectedInstance, keys) {
   inquirer.registerPrompt("search-list", require("inquirer-search-list"));
   const choices = [
     new inquirer.Separator(),
-    "Prototype Function",
     "Download assets, models & content from an instance",
     "Push local assets, models & content to an instance",
     "Sync to another instance",
@@ -61,26 +60,21 @@ export async function instancesPrompt(selectedInstance, keys) {
     // Add
     syncFiles(selectedInstance);
 
-  } else if(answers.instanceAction === "Prototype Function") {
-    console.log("Prototype Function");
-    // Add your logic
-    
-    
-
   } else if(answers.instanceAction === "Clean instance (warning)") {
 
     const locale = await localePrompt();
 
     const clean = new Clean(selectedInstance, locale);
-    await clean.cleanAll();
+    const cleaned = await clean.cleanAll();
 
-    setTimeout(() => {
-      console.log('\n')
-      console.log(ansiColors.green("🗑️ Instance cleaned successfully"));
-      console.log('\n') 
-      homePrompt();
-    }, 1000);
-   
+    if(cleaned){
+      setTimeout(() => {
+        console.log('\n')
+        console.log(ansiColors.green("🗑️ Instance cleaned successfully"));
+        console.log('\n') 
+        homePrompt();
+      }, 1000);
+    }
 
    
     // Add your logic here

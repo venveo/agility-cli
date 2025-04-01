@@ -95,7 +95,7 @@ yargs.command({
   },
   handler: async function (argv) {
     auth = new Auth();
-    await auth.authorize(argv.dev);
+    await auth.authorize();
   },
 });
 
