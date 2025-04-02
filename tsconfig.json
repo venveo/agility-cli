@@ -1,14 +1,17 @@
 {
 	"compilerOptions": {
-    "module" : "commonjs",
-	  "allowJs": true,
-	  "declaration": true,
-	  "jsx": "react",
-	  "target": "es5",
-	  "outDir": "./dist/",
-	  "lib": ["es2016", "dom"],
-	  "esModuleInterop": true,
-	  "skipLibCheck": true,
-	  "allowSyntheticDefaultImports": true
-	}
-  }
+		"module": "commonjs",
+		"allowJs": true,
+		"declaration": true,
+		"jsx": "react",
+		"target": "es5",
+		"outDir": "./dist/",
+		"lib": ["es2016", "dom"],
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true
+	},
+	// "exclude": [
+	// 	"src/prompts/utilities/agility-models.ts"
+	// ]
+}

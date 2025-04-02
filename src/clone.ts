@@ -74,12 +74,12 @@ export class clone{
         this.options.token = token.access_token;
 
         let modelSync = new model(this.options, multibar);
-        let pushSync = new push(this.options, multibar);
+        let pushSync = new push(this.options, multibar, this.sourceGuid, this.targetGuid, this.locale, false);
 
         
         let containerSync = new container(this.options,multibar);
 
-        await pushSync.pushInstance(this.sourceGuid, this.targetGuid, this.locale, false);
+        await pushSync.pushInstance();
     }
 
 }

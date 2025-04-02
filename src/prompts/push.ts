@@ -122,9 +122,9 @@ export async function syncFiles(instance: any) {
           let permitted = await auth.checkUserRole(guid, token.access_token);
           if (permitted) {
             console.log(colors.yellow("Pushing your instance..."));
-            let pushSync = new push(options, multibar);
+            let pushSync = new push(options, multibar, guid, targetInstance.guid, locale, preview);
           
-            pushSync.syncInstance(guid, targetInstance.guid, locale, preview);
+            // pushSync.syncInstance();
           
           
           } else {

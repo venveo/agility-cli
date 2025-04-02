@@ -12,7 +12,7 @@ inquirer.registerPrompt('search-list', require('inquirer-search-list'));
 export default async function fileSystemPrompt() {
 
 
-    const selectedDir =  selectDirectory();
+    const selectedDir = await selectDirectory();
     if (selectedDir) {
         console.log(chalk.green(`✅ Selected directory: ${selectedDir}`));
         // Proceed with writing files to `selectedDir`

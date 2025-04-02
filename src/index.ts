@@ -28,6 +28,8 @@ export let forceLocalMode: boolean = false;
 export let localServer: string
 export let token: string = null;
 
+
+
 let options: mgmtApi.Options;
 
 yargs.version("0.0.1_beta").demand(1).exitProcess(false);
