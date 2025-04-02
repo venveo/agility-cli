@@ -4,10 +4,15 @@ import * as fs from 'fs';
 const FormData = require('form-data');
 import * as cliProgress from 'cli-progress';
 import ansiColors from 'ansi-colors';
+import { homePrompt } from './prompts/home';
 
-export class push{
+export class pushNew{
     _options : mgmtApi.Options;
     _multibar: cliProgress.MultiBar;
+    _guid: string;
+    _targetGuid: string;
+    _locale: string;
+    _isPreview: boolean;
     processedModels: { [key: string]: number; };
     processedContentIds : {[key: number]: number;}; //format Key -> Old ContentId, Value New ContentId.
     skippedContentItems: {[key: number]: string}; //format Key -> ContentId, Value ReferenceName of the content.
@@ -15,9 +20,13 @@ export class push{
     processedTemplates: {[key: string]: number}; //format Key -> pageTemplateName, Value pageTemplateID.
     processedPages : {[key: number]: number}; //format Key -> old page id, Value new page id.
 
-    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar){
+    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean){
         this._options = options;
         this._multibar = multibar;
+        this._guid = guid;
+        this._targetGuid = targetGuid;
+        this._locale = locale;
+        this._isPreview = isPreview;
         this.processedModels = {};
         this.processedContentIds = {};
         this.processedGalleries = {};
@@ -75,7 +84,7 @@ export class push{
         let fileOperation = new fileOperations();
         try{
             
-            let files = fileOperation.readDirectory('models', baseFolder);
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/models`, baseFolder);
 
             let models : mgmtApi.Model[] = [];
 
@@ -110,7 +119,7 @@ export class push{
         let fileOperation = new fileOperations();
         try{
             
-            let files = fileOperation.readDirectory('assets/json');
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/json`);
 
             let assets: mgmtApi.AssetMediaList[] = [];
 
@@ -128,7 +137,7 @@ export class push{
     createBaseGalleries(){
         let fileOperation = new fileOperations();
         try{
-            let files = fileOperation.readDirectory('assets/galleries');
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/galleries`);
 
             let assetGalleries: mgmtApi.assetGalleries[] = [];
 
@@ -147,7 +156,7 @@ export class push{
         let fileOperation = new fileOperations();
         try{
             
-            let files = fileOperation.readDirectory('containers');
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/containers`);
 
             let containers : mgmtApi.Container[] = [];
 
@@ -169,7 +178,7 @@ export class push{
         let fileOperation = new fileOperations();
         try{
             
-            let files = fileOperation.readDirectory('templates', baseFolder);
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/templates`, baseFolder);
 
             let pageModels : mgmtApi.PageModel[] = [];
 
@@ -188,7 +197,7 @@ export class push{
         let fileOperation = new fileOperations();
         try{
             
-            let files = fileOperation.readDirectory(`${locale}/pages`);
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/pages`);
 
             let pages : mgmtApi.PageItem[] = [];
 
@@ -208,8 +217,8 @@ export class push{
         let fileOperation = new fileOperations();
         let contentItemsArray: mgmtApi.ContentItem[] = [];
 
-       if (fileOperation.folderExists(`${locale}/item`)) {
-            let files = fileOperation.readDirectory(`${locale}/item`);
+       if (fileOperation.folderExists(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/item`)) {
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/item`);
 
             const validBar1 = this._multibar.create(files.length, 0);
             validBar1.update(0, {name : 'Content Items: Validation'});
@@ -1499,8 +1508,8 @@ export class push{
         let defaultContainer = await apiClient.assetMethods.getDefaultContainer(guid);
         let fileOperation = new fileOperations();
 
-        let failedAssetsExists = fileOperation.fileExists('.agility-files/assets/failedAssets/unProcessedAssets.json');
-        let file = failedAssetsExists ? fileOperation.readFile('.agility-files/assets/failedAssets/unProcessedAssets.json'): null;
+        let failedAssetsExists = fileOperation.fileExists(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`);
+        let file = failedAssetsExists ? fileOperation.readFile(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`): null;
 
         let unProcessedAssets = JSON.parse(file) as {};
 
@@ -1546,7 +1555,7 @@ export class push{
                 }
                 let orginUrl = `${defaultContainer.originUrl}/${filePath}`;
                 const form = new FormData();
-                const file = fs.readFileSync(`.agility-files/assets/${filePath}`, null);
+                const file = fs.readFileSync(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/${filePath}`, null);
                 form.append('files',file, media.fileName);
                 let mediaGroupingID = -1;
                 try{
@@ -1599,12 +1608,12 @@ export class push{
         return removedStr;
     }
 
-    async pushInstance(guid: string, locale: string){
+    async pushInstance(){
         try{
             let fileOperation = new fileOperations();
             fileOperation.createLogFile('logs', 'instancelog');
-            await this.pushGalleries(guid);
-            await this.pushAssets(guid);
+            await this.pushGalleries(this._targetGuid);
+            await this.pushAssets(this._targetGuid);
             let models = this.getBaseModels();
             if(models){
 
@@ -1618,37 +1627,40 @@ export class push{
 
                 for(let i = 0; i < normalModels.length; i++){
                     let normalModel = normalModels[i];
-                    await this.pushNormalModels(normalModel, guid);
+                    await this.pushNormalModels(normalModel, this._targetGuid);
                     progressBar3.update(index);
                     index += 1;
                 }
                 
-                await this.pushLinkedModels(linkedModels, guid);
+                await this.pushLinkedModels(linkedModels, this._targetGuid);
                 let containerModels = models
 
                 if(containers){
-                    await this.pushContainers(containers, containerModels, guid);
-                    let contentItems = await this.getBaseContentItems(guid, locale);
+                    await this.pushContainers(containers, containerModels, this._targetGuid);
+                    let contentItems = await this.getBaseContentItems(this._targetGuid, this._locale);
                     if(contentItems){
                         let totalItems = contentItems.length;
-                        let linkedContentItems = await this.getLinkedContent(guid, contentItems);                        
-                        let normalContentItems = await this.getNormalContent(guid, contentItems, linkedContentItems);
-                        await this.pushNormalContentItems(guid, locale, normalContentItems);
-                        await this.pushLinkedContentItems(guid, locale, linkedContentItems);
+                        let linkedContentItems = await this.getLinkedContent(this._targetGuid, contentItems);                        
+                        let normalContentItems = await this.getNormalContent(this._targetGuid, contentItems, linkedContentItems);
+                        await this.pushNormalContentItems(this._targetGuid, this._locale, normalContentItems);
+                        await this.pushLinkedContentItems(this._targetGuid, this._locale, linkedContentItems);
                     }
                     let pageTemplates = await this.createBaseTemplates();
 
                     if(pageTemplates){
-                        await this.pushTemplates(pageTemplates, guid, locale);
+                        await this.pushTemplates(pageTemplates, this._targetGuid, this._locale);
                         if(contentItems){
-                            let pages = await this.createBasePages(locale);
+                            let pages = await this.createBasePages(this._locale);
                             if(pages){
-                                await this.pushPages(guid, locale, pages);
+                                await this.pushPages(this._targetGuid, this._locale, pages);
                             }
                         }
                     }
                 }
-                this._multibar.stop();
+
+                console.log(ansiColors.green('🚀 Push operation completed successfully.'));
+                homePrompt();
+                // this._multibar.stop();
             }
             else{
                 fileOperation.appendLogFile(`\n Nothing else to clone/push to the target instance as there are no Models present in the source Instance.`);

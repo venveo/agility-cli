@@ -19,6 +19,7 @@ import { baseUrlPrompt, getBaseURLfromGUID } from "./base-url";
 import { isPreview } from "./isPreview";
 import { elementsPrompt } from "./elements";
 import { push } from "../push";
+import { pushNew } from "../push_new";
 
 inquirer.registerPrompt("fuzzypath", require("inquirer-fuzzy-path"));
 
@@ -59,10 +60,10 @@ export async function pushFiles(instance: any) {
         let permitted = await auth.checkUserRole(guid, token.access_token);
         if (permitted) {
           console.log(colors.yellow("Pushing your instance..."));
-          let pushSync = new push(options, multibar, guid, targetInstance.guid, locale, preview);
+          let push = new pushNew(options, multibar, guid, targetInstance.guid, locale, preview);
         
 
-          pushSync.pushInstance();
+          push.pushInstance();
         
         
         } else {
@@ -122,7 +123,7 @@ export async function syncFiles(instance: any) {
           let permitted = await auth.checkUserRole(guid, token.access_token);
           if (permitted) {
             console.log(colors.yellow("Pushing your instance..."));
-            let pushSync = new push(options, multibar, guid, targetInstance.guid, locale, preview);
+            let pushSync = new pushNew(options, multibar, guid, targetInstance.guid, locale, preview);
           
             // pushSync.syncInstance();
           

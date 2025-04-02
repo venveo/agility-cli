@@ -221,7 +221,6 @@ export class Auth{
             }
 
             const data = await response.json();
-            // console.log('response', data);
             return data as serverUser;
         } catch (error) {
             console.error('Fetch error:', error);

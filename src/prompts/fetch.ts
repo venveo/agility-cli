@@ -43,7 +43,6 @@ export async function fetchCommandsPrompt(selectedInstance: any, keys: any, guid
 
     if(answer.apiMethod === 'getSitemapFlat') {
         console.log('Fetching sitemap...');
-        // console.log(api)
 
         const sitemap = await api.getSitemapFlat({
             channelName: channel,

@@ -18,6 +18,10 @@ import { channelPrompt } from "./channel";
 import { baseUrlPrompt, getBaseURLfromGUID } from "./base-url";
 import { isPreview } from "./isPreview";
 import { elementsPrompt } from "./elements";
+import { syncNew } from "../sync_new";
+import { containerNew } from "../container_new";
+import { assetNew } from "../asset_new";
+import { modelNew } from "../model_new";
 
 inquirer.registerPrompt('fuzzypath', require('inquirer-fuzzy-path'))
 
@@ -36,23 +40,25 @@ export async function pullFiles(instance: any) {
     const preview = await isPreview();
     const baseUrl = await getBaseURLfromGUID(guid);
     const elements:any = await elementsPrompt();
-    const action:any = await pullPrompt(guid);
+    // const action:any = await pullPrompt(guid);
     
+    downloadFiles(guid, locale, channel, baseUrl, preview, elements);
+
     // now handle the actions
-    switch (action) {
-      case "Download":
-        downloadFiles(guid, locale, channel, baseUrl, preview, elements);
-        break;
-      case "Push to another instance":
-        let pushToInstance = await instanceSelector();
-        console.log('🚀 ','Pushing ', guid, 'to ➡️', pushToInstance.guid);
-        break;
-      case "< Back to Home":
-        homePrompt();
-        break;
-      default:
-        break;
-    }
+    // switch (action) {
+    //   case "Download":
+    //     downloadFiles(guid, locale, channel, baseUrl, preview, elements);
+    //     break;
+    //   case "Push to another instance":
+    //     let pushToInstance = await instanceSelector();
+    //     console.log('🚀 ','Pushing ', guid, 'to ➡️', pushToInstance.guid);
+    //     break;
+    //   case "< Back to Home":
+    //     homePrompt();
+    //     break;
+    //   default:
+    //     break;
+    // }
 }
 
 
@@ -95,10 +101,10 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                 if(syncKey){
                     console.log(colors.yellow(`Downloading your instance to ${process.cwd()}/.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
 
-                    let contentPageSync = new sync(guid, syncKey, locale, channel, options, multibar, isPreview);
-                    let assetsSync = new asset(options, multibar);
-                    let containerSync = new container(options, multibar);
-                    let modelSync = new model(options, multibar);
+                    let contentPageSync = new syncNew(guid, syncKey, locale, channel, options, multibar, isPreview);
+                    let assetsSync = new assetNew(options, multibar);
+                    let containerSync = new containerNew(options, multibar);
+                    let modelSync = new modelNew(options, multibar);
 
                     const syncTasks = [];
 

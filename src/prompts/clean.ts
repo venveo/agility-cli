@@ -8,6 +8,7 @@ import { createMultibar } from "../multibar";
 import { asset } from "../asset";
 import { homePrompt } from "./home";
 import ansiColors from "ansi-colors";
+import { assetNew } from "../asset_new";
 const fs = require("fs");
 const path = require("path");
 const FormData = require("form-data");
@@ -140,8 +141,6 @@ class Clean {
 
   async cleanContent(mgmt: any, multibar: any) {
     const containers = await mgmt.containerMethods.getContainerList(this._guid);
-
-    // console.log('Containers', containers)
     const progressBar = multibar.create(containers.length, 0);
     progressBar.update(0, { name: "Deleting Content Lists" });
 
@@ -178,8 +177,6 @@ class Clean {
 
     let pageModels = [];
     try {
-      // TODO: this call fails if there's no page templates
-      // we should fix this in the management API
       pageModels = await mgmt.pageMethods.getPageTemplates(this._guid, this._locale, true);
     } catch (err) {
       // do nothing, empty array
@@ -220,7 +217,7 @@ class Clean {
   }
 
   async cleanMedia(apiClient: any, multibar: any) {
-    let assetsSync = new asset(options, multibar);
+    let assetsSync = new assetNew(options, multibar);
     // TODO: we need to loop over the locales
 
     await assetsSync.deleteAllAssets(this._guid, this._locale, true);

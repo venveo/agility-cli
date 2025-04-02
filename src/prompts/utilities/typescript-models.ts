@@ -35,8 +35,6 @@ export default async function generateTypes(selectedInstance: any) {
 
   try {
 
-    // console.log(`\n AI Generating TypeScript models...`)
-
     console.log('\n')
     let str = "🤖 AI Generating TypeScript models";
     const rainbow = chalkAnimation.pulse(str);

@@ -23,7 +23,7 @@ export async function instancesPrompt(selectedInstance, keys) {
     new inquirer.Separator(),
     "Download assets, models & content from an instance",
     "Push local assets, models & content to an instance",
-    "Sync to another instance",
+    // "Sync to another instance",
     new inquirer.Separator(),
     "Clean instance (warning)",
     // "Clone this instance to another instance",
@@ -31,7 +31,7 @@ export async function instancesPrompt(selectedInstance, keys) {
     new inquirer.Separator(),
     // "Generate .env.local",
     // "Generate sitemap.xml", // in development
-    "Generate TypeScript interfaces",
+    "Generate TypeScript interfaces (beta)",
     new inquirer.Separator(),
     "< Back to Home",
   ];
@@ -145,8 +145,6 @@ export async function getInstance(selectedInstance: any) {
     ...currentWebsite,
   }
 
-
-//   console.log(currentWebsite);
 
   const base = auth.determineBaseUrl(guid);
   let previewKey = await auth.getPreviewKey(
