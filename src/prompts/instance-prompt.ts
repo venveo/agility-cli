@@ -1,16 +1,17 @@
 import inquirer from "inquirer";
-import { Auth } from "../../auth";
-import { fileOperations } from "../../fileOperations";
-import { homePrompt } from "../home";
+import { Auth } from "../auth";
+import { fileOperations } from "../fileOperations";
+import { homePrompt } from "./home-prompt";
 
 import * as mgmtApi from "@agility/management-sdk";
-import { fetchAPIPrompt } from "../fetch";
-import { pullFiles } from "../pull";
-import generateTypes from "../utilities/typescript-models";
-import { pushFiles, syncFiles } from "../push";
-import Clean from "../clean";
-import { localePrompt } from "../locale";
+import { fetchAPIPrompt } from "./fetch-prompt";
+import { pullFiles } from "./pull-prompt";
+import generateTypes from "./utilities/generate-typescript-models";
+import { pushFiles, syncFiles } from "./push-prompt";
+import Clean from "./instances/clean";
+import { localePrompt } from "./locale-prompt";
 import ansiColors from "ansi-colors";
+import { generateEnv } from "./utilities/generate-env";
 const FormData = require("form-data");
 
 let options: mgmtApi.Options;
@@ -29,9 +30,10 @@ export async function instancesPrompt(selectedInstance, keys) {
     // "Clone this instance to another instance",
     // "Fetch API", // in development
     new inquirer.Separator(),
-    // "Generate .env.local",
-    // "Generate sitemap.xml", // in development
+    "Generate .env.local",
+    "Generate sitemap.xml", // in development
     "Generate TypeScript interfaces (beta)",
+    "Generate React Components (beta)",
     new inquirer.Separator(),
     "< Back to Home",
   ];
@@ -85,9 +87,11 @@ export async function instancesPrompt(selectedInstance, keys) {
     await fetchAPIPrompt(selectedInstance, keys);
   } else if (answers.instanceAction === "Generate .env.local") {
     console.log("Generating .env.local file");
+    await generateEnv(selectedInstance);
     // Add your logic here
   } else if (answers.instanceAction === "Generate sitemap.xml") {
     console.log("Generating sitemap.xml");
+
     // Add your logic here
   } else if (answers.instanceAction === "Generate TypeScript interfaces") {
     console.log("Generating TypeScript interfaces");

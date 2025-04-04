@@ -5,26 +5,15 @@ import chalk from 'chalk';
 
 inquirer.registerPrompt('search-list', require('inquirer-search-list'));
 
-// import inquirer from "inquirer";
-// inquirer.registerPrompt('fs-selector', require('inquirer-fs-selector'));
-
-
 export default async function fileSystemPrompt() {
-
-
     const selectedDir = await selectDirectory();
     if (selectedDir) {
         console.log(chalk.green(`✅ Selected directory: ${selectedDir}`));
-        // Proceed with writing files to `selectedDir`
     } else {
         console.log(chalk.red('❌ Directory selection canceled.'));
     }
-
     return selectedDir;
-
 }
-
-
 
 async function selectDirectory(startingPath = process.cwd()) {
     let currentPath = startingPath;

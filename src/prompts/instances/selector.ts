@@ -3,7 +3,7 @@ import { Auth } from "../../auth";
 import { fileOperations } from "../../fileOperations";
 
 import colors from "ansi-colors";
-import { homePrompt } from "../home";
+import { homePrompt } from "../home-prompt";
 import { logout } from "../logout";
 const FormData = require("form-data");
 

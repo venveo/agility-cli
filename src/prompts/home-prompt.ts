@@ -1,12 +1,12 @@
 import inquirer from "inquirer";
 import colors from "ansi-colors";
-import { pullFiles } from "./pull";
+import { pullFiles } from "./pull-prompt";
 import { listInstances } from "./instances/list";
 import { logout } from "./logout";
 import process from "process";
-import { generateEnv } from "./generate-env";
+import { generateEnv } from "./utilities/generate-env";
 import { instanceSelector } from "./instances/selector";
-import { getInstance, instancesPrompt } from "./instances/instance";
+import { getInstance, instancesPrompt } from "./instance-prompt";
 
 export async function homePrompt(prompt?: any) {
     await inquirer

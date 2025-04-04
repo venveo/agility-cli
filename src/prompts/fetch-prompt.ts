@@ -1,15 +1,15 @@
 import inquirer from 'inquirer';
-import { localePrompt } from './locale';
-import { channelPrompt } from './channel';
-import { isPreview } from './isPreview';
-import { baseUrlPrompt, getBaseURLfromGUID } from './base-url';
+import { localePrompt } from './locale-prompt';
+import { channelPrompt } from './channel-prompt';
+import { isPreview } from './isPreview-prompt';
+import { baseUrlPrompt, getBaseURLfromGUID } from './base-url-prompt';
 import agilitySDK from '@agility/content-fetch'
 import process from 'process';
 
 import { fileOperations } from "../fileOperations";
 import { exec } from 'child_process';
-import { homePrompt } from './home';
-import { instancesPrompt } from './instances/instance';
+import { homePrompt } from './home-prompt';
+import { instancesPrompt } from './instance-prompt';
 
 export async function fetchCommandsPrompt(selectedInstance: any, keys: any, guid: string, locale: string, channel: string, isPreview: boolean, baseUrl: string, apiKey: string) {      
     

@@ -20,7 +20,7 @@ import { createMultibar } from "./multibar";
 import { modelSync } from "./modelSync";
 import { FilterData, ModelFilter } from "./models/modelFilter";
 import { create } from "domain";
-import { homePrompt } from "./prompts/home";
+import { homePrompt } from "./prompts/home-prompt";
 import { exit } from "process";
 
 let auth: Auth;

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 const FormData = require('form-data');
 import * as cliProgress from 'cli-progress';
 import ansiColors from 'ansi-colors';
-import { homePrompt } from './prompts/home';
+import { homePrompt } from './prompts/home-prompt';
 
 export class pushNew{
     _options : mgmtApi.Options;
