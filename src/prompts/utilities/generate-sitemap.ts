@@ -7,6 +7,7 @@ import { AgilityInstance } from "../../types/Instance";
 import { isPreviewPrompt } from "../isPreview-prompt";
 import { channelPrompt } from "../channel-prompt";
 import { websiteAddressPrompt } from "../website-address-prompt";
+import { homePrompt } from "../home-prompt";
 
 export const generateSitemap = async (selectedInstance: AgilityInstance, keys: any) => {
   const isPreview = await isPreviewPrompt();

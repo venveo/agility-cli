@@ -53,6 +53,5 @@ export async function generateEnv(selectedInstance: AgilityInstance) {
     fs.writeFileSync(path.join(filesPath, '.env.local'), envContent.trim());
     console.log(instance)
     console.log('\x1b[32mSuccessfully generated .env file\x1b[0m');
-
-    homePrompt();
+    return true;
 }

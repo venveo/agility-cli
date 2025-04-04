@@ -16,10 +16,12 @@ import fileSystemPrompt from "../file-system-prompt";
 import chalkAnimation from 'chalk-animation';
 const axios = require("axios");
 
-let AI_ENDPOINT: string = "https://b3ce-174-93-30-12.ngrok-free.app/api/ai/cli/typescript-models";
+let AI_ENDPOINT: string = "https://4a3b-2607-fea8-7d60-2b00-1d24-b69c-b93f-b227.ngrok-free.app/api/ai/cli/typescript-models";
 let auth: Auth;
 
 export default async function generateTypes(selectedInstance: any) {
+
+  console.log(ansiColors.yellow("Generating TypeScript models..."));
   const locale = await localePrompt();
   const filesPath = await fileSystemPrompt();
 
@@ -67,6 +69,7 @@ export default async function generateTypes(selectedInstance: any) {
       responseType: "stream",
       }
     );
+
 
     const reader = response.data;
     const decoder = new TextDecoder("utf-8");

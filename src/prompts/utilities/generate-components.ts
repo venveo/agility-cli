@@ -19,7 +19,7 @@ const axios = require("axios");
 let AI_ENDPOINT: string = "https://b3ce-174-93-30-12.ngrok-free.app/api/ai/cli/typescript-models";
 let auth: Auth;
 
-export default async function generateTypes(selectedInstance: any) {
+export default async function generateReactComponents(selectedInstance: any) {
   const locale = await localePrompt();
   const filesPath = await fileSystemPrompt();
 
@@ -83,10 +83,10 @@ export default async function generateTypes(selectedInstance: any) {
       code.createFile(modelsFilePath, cleanedResult);
       console.log(ansiColors.green("🚀 TypeScript models generated successfully!"));
       console.log(`\nResponse written to ${modelsFilePath}`);
-      homePrompt();
+      return true;
     });
 
-    await new Promise((resolve) => reader.on("end", resolve));
+    return await new Promise((resolve) => reader.on("end", resolve));
   } catch (error) {
     console.error("Error occurred while hitting AI_ENDPOINT:", error);
   }

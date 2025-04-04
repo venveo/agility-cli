@@ -86,8 +86,13 @@ class Clean {
         }
       } catch (err) {
         console.log("Error cleaning instance", err);
+      } finally {
+        console.log(ansiColors.green("🗑️ Instance cleaned successfully"));
+        return true;
       }
     }
+
+    return true;
   }
 
   async cleanContainers(apiClient: any, multibar: any) {
