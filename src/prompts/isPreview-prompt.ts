@@ -1,6 +1,6 @@
 import inquirer from "inquirer";
 
-export async function isPreview() {
+export async function isPreviewPrompt() {
     const answers = await inquirer.prompt([
         {
             type: 'list',

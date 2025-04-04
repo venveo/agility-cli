@@ -2,18 +2,19 @@ import { Auth } from "../../auth";
 import { fileOperations } from "../../fileOperations";
 import { localePrompt } from "../locale-prompt";
 import { baseUrlPrompt } from "../base-url-prompt";
-import { isPreview } from "../isPreview-prompt";
+import { isPreviewPrompt } from "../isPreview-prompt";
 import { homePrompt } from "../home-prompt";
 import { instanceSelector } from "../instances/selector";
 import { channelPrompt } from "../channel-prompt";
 import { getInstance } from "../instance-prompt";
 import fileSystemPrompt from "../file-system-prompt";
+import { AgilityInstance } from "../../types/Instance";
 const FormData = require("form-data");
 const fs = require('fs');
 const path = require('path');
 const inquirer = require('inquirer');
 
-export async function generateEnv(selectedInstance: any) {
+export async function generateEnv(selectedInstance: AgilityInstance) {
     const i = await getInstance(selectedInstance);
     
     const locale = await localePrompt();

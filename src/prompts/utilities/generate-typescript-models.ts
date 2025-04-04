@@ -7,7 +7,7 @@ import { type ContentListFilterModel } from "@agility/management-sdk/dist/models
 import { fileOperations } from "../../fileOperations";
 import { localePrompt } from "../locale-prompt";
 import { channelPrompt } from "../channel-prompt";
-import { isPreview } from "../isPreview-prompt";
+import { isPreviewPrompt } from "../isPreview-prompt";
 import inquirer from "inquirer";
 import * as path from "path";
 import ansiColors = require("ansi-colors");

@@ -27,6 +27,7 @@ export async function instanceSelector() {
 
 
   let instances = user.websiteAccess;
+  
 
   const instanceChoices = instances.map((instance: any) => ({
     name: `${instance.websiteName} (${instance.guid})`,

@@ -16,7 +16,7 @@ import { get } from "http";
 import { localePrompt } from "./locale-prompt";
 import { channelPrompt } from "./channel-prompt";
 import { baseUrlPrompt, getBaseURLfromGUID } from "./base-url-prompt";
-import { isPreview } from "./isPreview-prompt";
+import { isPreviewPrompt } from "./isPreview-prompt";
 import { elementsPrompt } from "./elements-prompt";
 import { push } from "../push";
 import { pushNew } from "../push_new";
@@ -34,7 +34,7 @@ export async function pushFiles(instance: any) {
   const targetInstance = await instanceSelector();
   const locale = await localePrompt();
   const channel = await channelPrompt();
-  const preview = await isPreview();
+  const preview = await isPreviewPrompt();
 
   let code = new fileOperations();
   auth = new Auth();
@@ -97,7 +97,7 @@ export async function syncFiles(instance: any) {
     const targetInstance = await instanceSelector();
     const locale = await localePrompt();
     const channel = await channelPrompt();
-    const preview = await isPreview();
+    const preview = await isPreviewPrompt();
   
     let code = new fileOperations();
     auth = new Auth();

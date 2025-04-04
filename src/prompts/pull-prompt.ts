@@ -16,7 +16,7 @@ import { get } from "http";
 import { localePrompt } from "./locale-prompt";
 import { channelPrompt } from "./channel-prompt";
 import { baseUrlPrompt, getBaseURLfromGUID } from "./base-url-prompt";
-import { isPreview } from "./isPreview-prompt";
+import { isPreviewPrompt } from "./isPreview-prompt";
 import { elementsPrompt } from "./elements-prompt";
 import { syncNew } from "../sync_new";
 import { containerNew } from "../container_new";
@@ -37,7 +37,7 @@ export async function pullFiles(instance: any) {
 
     const locale = await localePrompt();
     const channel = await channelPrompt();
-    const preview = await isPreview();
+    const preview = await isPreviewPrompt();
     const baseUrl = await getBaseURLfromGUID(guid);
     const elements:any = await elementsPrompt();
     // const action:any = await pullPrompt(guid);

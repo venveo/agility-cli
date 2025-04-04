@@ -20,7 +20,7 @@ async function selectDirectory(startingPath = process.cwd()) {
 
     while (true) {
         console.clear();
-        console.log(chalk.yellow(`Current directory: ${currentPath}`));
+        // console.log(chalk.yellow(`Current directory: ${currentPath}`));
 
         // Get directory contents
         const files = fs.readdirSync(currentPath);

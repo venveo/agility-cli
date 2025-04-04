@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 import * as yargs from "yargs";
 import { Auth } from "./auth";
