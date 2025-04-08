@@ -20,6 +20,7 @@ import { isPreviewPrompt } from "./isPreview-prompt";
 import { elementsPrompt } from "./elements-prompt";
 import { push } from "../push";
 import { pushNew } from "../push_new";
+import { AgilityInstance } from "../types/instance";
 
 inquirer.registerPrompt("fuzzypath", require("inquirer-fuzzy-path"));
 
@@ -31,8 +32,8 @@ let options: mgmtApi.Options;
 export async function pushFiles(instance: any) {
   const { guid, websiteName } = instance;
 
-  const targetInstance = await instanceSelector();
-  const locale = await localePrompt();
+  const selectedInstance:AgilityInstance = await instanceSelector();
+  const locale = await localePrompt(selectedInstance);
   const channel = await channelPrompt();
   const preview = await isPreviewPrompt();
 
@@ -60,7 +61,7 @@ export async function pushFiles(instance: any) {
         let permitted = await auth.checkUserRole(guid, token.access_token);
         if (permitted) {
           console.log(colors.yellow("Pushing your instance..."));
-          let push = new pushNew(options, multibar, guid, targetInstance.guid, locale, preview);
+          let push = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview);
         
 
           push.pushInstance();
@@ -94,8 +95,8 @@ export async function pushFiles(instance: any) {
 export async function syncFiles(instance: any) {
     const { guid, websiteName } = instance;
   
-    const targetInstance = await instanceSelector();
-    const locale = await localePrompt();
+    const selectedInstance:AgilityInstance = await instanceSelector();
+    const locale = await localePrompt(selectedInstance);
     const channel = await channelPrompt();
     const preview = await isPreviewPrompt();
   
@@ -123,7 +124,7 @@ export async function syncFiles(instance: any) {
           let permitted = await auth.checkUserRole(guid, token.access_token);
           if (permitted) {
             console.log(colors.yellow("Pushing your instance..."));
-            let pushSync = new pushNew(options, multibar, guid, targetInstance.guid, locale, preview);
+            let pushSync = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview);
           
             // pushSync.syncInstance();
           

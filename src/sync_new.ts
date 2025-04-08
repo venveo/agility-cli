@@ -107,7 +107,7 @@ export class syncNew{
          let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/page`);
 
          const progressBar01 = this._multibar.create(files.length, 0);
-         progressBar01.update(0, {name : 'Modifying Page Object'});
+         progressBar01.update(0, {name : 'Pages'});
          let index = 1;
 
          for(let i = 0; i < files.length; i++){

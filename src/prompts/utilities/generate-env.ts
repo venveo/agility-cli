@@ -8,7 +8,7 @@ import { instanceSelector } from "../instances/selector";
 import { channelPrompt } from "../channel-prompt";
 import { getInstance } from "../instance-prompt";
 import fileSystemPrompt from "../file-system-prompt";
-import { AgilityInstance } from "../../types/Instance";
+import { AgilityInstance } from "../../types/instance";
 const FormData = require("form-data");
 const fs = require('fs');
 const path = require('path');
@@ -17,7 +17,7 @@ const inquirer = require('inquirer');
 export async function generateEnv(selectedInstance: AgilityInstance) {
     const i = await getInstance(selectedInstance);
     
-    const locale = await localePrompt();
+    const locale = await localePrompt(selectedInstance);
     const channel = await channelPrompt();
 
     const filesPath = await fileSystemPrompt();

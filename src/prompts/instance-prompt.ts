@@ -3,7 +3,7 @@ import { Auth } from "../auth";
 import { fileOperations } from "../fileOperations";
 import { homePrompt } from "./home-prompt";
 import * as mgmtApi from "@agility/management-sdk";
-import { fetchAPIPrompt } from "./fetch-prompt";
+import { fetchAPIPrompt, fetchCommandsPrompt } from "./fetch-prompt";
 import { pullFiles } from "./pull-prompt";
 import generateTypes from "./utilities/generate-typescript-models";
 import { pushFiles, syncFiles } from "./push-prompt";
@@ -13,17 +13,23 @@ import ansiColors from "ansi-colors";
 import { generateEnv } from "./utilities/generate-env";
 import { generateSitemap } from "./utilities/generate-sitemap";
 import generateReactComponents from "./utilities/generate-components";
+import { AgilityInstance } from "../types/instance";
 const FormData = require("form-data");
 
 let options: mgmtApi.Options;
 let instancePermission: mgmtApi.InstancePermission;
-export async function instancesPrompt(selectedInstance, keys) {
-  inquirer.registerPrompt("search-list", require("inquirer-search-list"));
+inquirer.registerPrompt("search-list", require("inquirer-search-list"));
+
+export async function instancesPrompt(selectedInstance:AgilityInstance, keys) {
+  
 
   const choices = [
     new inquirer.Separator(),
     { name: "Download assets, models & content from an instance", value: "pull" },
     { name: "Push local assets, models & content to an instance", value: "push" },
+    new inquirer.Separator(),
+    { name: "Fetch API", value: "fetch" },
+    new inquirer.Separator(),
     { name: "Generate .env.local", value: "env" },
     { name: "Generate sitemap.xml", value: "sitemap" },
     { name: "Generate TypeScript interfaces (beta)", value: "types" },
@@ -52,6 +58,12 @@ export async function instancesPrompt(selectedInstance, keys) {
     case "push":
       pushFiles(selectedInstance);
       break;
+    case "fetch":
+      const fetch = await fetchAPIPrompt(selectedInstance, keys);
+      if(fetch){
+        homePrompt();
+      }
+      break;
     case "env":
       const generatedEnv = await generateEnv(keys);
       if (generatedEnv) {
@@ -74,7 +86,7 @@ export async function instancesPrompt(selectedInstance, keys) {
       }
       break;
     case "clean":
-      const locale = await localePrompt();
+      const locale = await localePrompt(selectedInstance);
       const clean = new Clean(selectedInstance, locale);
       const cleaned = await clean.cleanAll();
       if (cleaned) {
@@ -108,6 +120,7 @@ export async function getInstance(selectedInstance: any) {
   let token = await auth.cliPoll(form, guid);
   options = new mgmtApi.Options();
   options.token = token.access_token;
+  options.baseUrl = auth.determineBaseUrl(guid);
 
   let user = await auth.getUser(guid, token.access_token);
   if (!user) {
@@ -121,7 +134,10 @@ export async function getInstance(selectedInstance: any) {
     return;
   }
 
-  let apiClient = new mgmtApi.ApiClient(options);
+  let apiClient:mgmtApi.ApiClient = new mgmtApi.ApiClient(options);
+  try {
+
+
   const instance = await apiClient.instanceUserMethods.getUsers(guid);
   let currentWebsite = user.websiteAccess.find((website: any) => website.guid === guid);
 
@@ -131,8 +147,9 @@ export async function getInstance(selectedInstance: any) {
   };
 
   const base = auth.determineBaseUrl(guid);
-  let previewKey = await auth.getPreviewKey(guid, userBaseUrl ? userBaseUrl : base);
-  let fetchKey = await auth.getFetchKey(guid, userBaseUrl ? userBaseUrl : base);
+
+  let previewKey = await auth.getPreviewKey(guid);
+  let fetchKey = await auth.getFetchKey(guid);
 
   return {
     guid,
@@ -140,4 +157,12 @@ export async function getInstance(selectedInstance: any) {
     fetchKey,
     websiteDetails,
   };
+
+} catch (error) {
+
+  console.log(ansiColors.red("Error fetching instance details. Some dev instances have data issues from errors cloning."));
+  // console.error("Error fetching instance details:", error);
+  return null;
+}
+
 }

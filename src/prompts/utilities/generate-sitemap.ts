@@ -3,7 +3,7 @@ import * as path from "path";
 import { localePrompt } from "../locale-prompt";
 import fileSystemPrompt from "../file-system-prompt";
 import agilitySDK from "@agility/content-fetch";
-import { AgilityInstance } from "../../types/Instance";
+import { AgilityInstance } from "../../types/instance";
 import { isPreviewPrompt } from "../isPreview-prompt";
 import { channelPrompt } from "../channel-prompt";
 import { websiteAddressPrompt } from "../website-address-prompt";
@@ -18,7 +18,7 @@ export const generateSitemap = async (selectedInstance: AgilityInstance, keys: a
     isPreview: isPreview,
   });
 
-  const locale = await localePrompt();
+  const locale = await localePrompt(selectedInstance);
   const channel = await channelPrompt();
   const filesPath = await fileSystemPrompt();
   const baseUrl = await websiteAddressPrompt();

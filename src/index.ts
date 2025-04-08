@@ -18,10 +18,11 @@ const inquirer = require("inquirer");
 inquirer.registerPrompt('search-list', require('inquirer-search-list'));
 import { createMultibar } from "./multibar";
 import { modelSync } from "./modelSync";
-import { FilterData, ModelFilter } from "./models/modelFilter";
+import { FilterData, ModelFilter } from "./types/modelFilter";
 import { create } from "domain";
 import { homePrompt } from "./prompts/home-prompt";
 import { exit } from "process";
+import chalk from "chalk";
 
 let auth: Auth;
 export let forceDevMode: boolean = false;
@@ -55,22 +56,21 @@ yargs.command({
     let codeFileStatus = code.codeFileExists();
 
     if(argv.dev){
-      console.log(colors.yellow("🟢 Connected to Agility Dev Servers"));
+      console.log("🟢 Connected to Agility " + chalk.underline("Dev Servers"));
+      code.deleteCodeFile();
+      auth.authorize();
       forceDevMode = true;
     }
 
     if(argv.local){
-      console.log(colors.yellow("🟢 Connected to https://localhost:5050"));
+      console.log(colors.white("🟢 Connected to https://localhost:5050"));
       forceLocalMode = true;
     }
 
-    if(!argv.dev && !argv.local){
-      console.log(colors.yellow("🟢 Connected to Agility Production Servers"));
-    }
 
 
     if (!codeFileStatus) {
-      console.log(colors.red(`Launching ${argv.dev ? 'dev':'prod'} authentication in browser...`));
+      console.log(colors.white(`\nLaunching authentication in browser...`));
       auth.authorize();
     }
 
@@ -79,6 +79,7 @@ yargs.command({
       if (code.codeFileExists()) {
         isAuthenticated = true;
         console.log(colors.green("You have successfully authenticated."));
+        console.log('------------------------------------\n');
         clearInterval(interval);
         homePrompt();
       }

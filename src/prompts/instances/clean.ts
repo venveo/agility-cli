@@ -9,6 +9,7 @@ import { asset } from "../../asset";
 import { homePrompt } from "../home-prompt";
 import ansiColors from "ansi-colors";
 import { assetNew } from "../../asset_new";
+import { AgilityInstance } from "../../types/instance";
 const fs = require("fs");
 const path = require("path");
 const FormData = require("form-data");
@@ -17,16 +18,16 @@ let auth: Auth;
 let options: mgmtApi.Options;
 
 class Clean {
-  _selectedInstance: any;
+  _selectedInstance: AgilityInstance;
   _locale: string;
   _guid: string;
   _websiteName: string;
 
-  constructor(selectedInstance: string, locale: string) {
+  constructor(selectedInstance: AgilityInstance, locale: string) {
     this._selectedInstance = selectedInstance;
-    this._guid = this._selectedInstance.guid;
-    this._websiteName = this._selectedInstance.websiteName;
     this._locale = locale;
+    this._guid = this._selectedInstance.guid;
+    this._websiteName = this._selectedInstance.websiteDetails.websiteName;
   }
 
   async cleanAll() {
@@ -40,15 +41,13 @@ class Clean {
       const form = new FormData();
       form.append("cliCode", data.code);
 
-      // let guid: string = guid as string;
-      // let userBaseUrl: string = baseUrl as string;
       let token = await auth.cliPoll(form, this._guid);
       let multibar = createMultibar({ name: "Cleaning" });
 
       options = new mgmtApi.Options();
       options.token = token.access_token;
 
-      let mgmtApiClient = new mgmtApi.ApiClient(options);
+      let mgmtApiClient:mgmtApi.ApiClient = new mgmtApi.ApiClient(options);
 
       try {
         const answers = await inquirer.prompt([
@@ -71,7 +70,7 @@ class Clean {
               if (containers) {
                 const models = await this.cleanModels(mgmtApiClient, multibar);
                 if (models) {
-                  const media = await this.cleanMedia(mgmtApiClient, multibar);
+                  const media = await this.cleanMedia(multibar);
                   if (media) {
                     return true;
                   }
@@ -79,10 +78,7 @@ class Clean {
               }
             }
           }
-          // setTimeout(() => {
-          //     multibar.stop();
 
-          // }, 500);
         }
       } catch (err) {
         console.log("Error cleaning instance", err);
@@ -95,13 +91,13 @@ class Clean {
     return true;
   }
 
-  async cleanContainers(apiClient: any, multibar: any) {
-    const containers = await apiClient.containerMethods.getContainerList(this._guid);
+  async cleanContainers(mgmt: mgmtApi.ApiClient, multibar: any) {
+    const containers = await mgmt.containerMethods.getContainerList(this._guid);
     const progressBar = multibar.create(containers.length, 0);
     progressBar.update(0, { name: "Deleting Containers" });
     for (const container of containers) {
       try {
-        await apiClient.containerMethods.deleteContainer(container.contentViewID, this._guid);
+        await mgmt.containerMethods.deleteContainer(container.contentViewID, this._guid);
         progressBar.increment();
       } catch (err) {
         console.log("Error deleting container");
@@ -110,10 +106,10 @@ class Clean {
 
     return true;
   }
-  async cleanPages(apiClient: any, multibar: any) {
-    const sitemap = await apiClient.pageMethods.getSitemap(this._guid, this._locale);
+  async cleanPages(mgmt: mgmtApi.ApiClient, multibar: any) {
+    const sitemap = await mgmt.pageMethods.getSitemap(this._guid, this._locale);
 
-    const pages = sitemap[0].pages;
+    const pages:mgmtApi.SitemapItem[] = sitemap[0].pages;
 
     let parentPages = pages.filter((p) => p.parentPageID < 0);
     let childPages = pages.filter((p) => p.parentPageID > 0);
@@ -125,7 +121,7 @@ class Clean {
 
     for (const page of childPages) {
       try {
-        await apiClient.pageMethods.deletePage(page.pageID, this._guid, this._locale);
+        await mgmt.pageMethods.deletePage(page.pageID, this._guid, this._locale);
         progressBar.increment();
       } catch (err) {
         console.log("Error deleting page");
@@ -134,7 +130,7 @@ class Clean {
 
     for (const page of parentPages) {
       try {
-        await apiClient.pageMethods.deletePage(page.pageID, this._guid, this._locale);
+        await mgmt.pageMethods.deletePage(page.pageID, this._guid, this._locale);
         progressBar.increment();
       } catch (err) {
         console.log("Error deleting page");
@@ -144,20 +140,18 @@ class Clean {
     return true;
   }
 
-  async cleanContent(mgmt: any, multibar: any) {
-    const containers = await mgmt.containerMethods.getContainerList(this._guid);
+  async cleanContent(mgmt: mgmtApi.ApiClient, multibar: any) {
+    const containers: mgmtApi.Container[] = await mgmt.containerMethods.getContainerList(this._guid);
     const progressBar = multibar.create(containers.length, 0);
     progressBar.update(0, { name: "Deleting Content Lists" });
 
-    let content = [];
+    let content:mgmtApi.ContentItem[] = [];
 
     for (const container of containers) {
       try {
-        content = await mgmt.contentMethods.getContentList(container.referenceName, this._guid, this._locale);
-      } catch (err) {
-
-        // the content list may not have been uploaded properly
-        // console.log("Error getting content list ->", err);
+        const contentList = await mgmt.contentMethods.getContentList(container.referenceName, this._guid, this._locale, null);
+        content = contentList.items;
+      } catch {
       }
       if (content) {
         for (const contentItem of content) {
@@ -176,14 +170,14 @@ class Clean {
     return true;
   }
 
-  async cleanModels(mgmt: any, multibar: any) {
+  async cleanModels(mgmt: mgmtApi.ApiClient, multibar: any) {
     const contentModels = await mgmt.modelMethods.getContentModules(true, this._guid);
     const componentModels = await mgmt.modelMethods.getPageModules(true, this._guid);
 
-    let pageModels = [];
+    let pageModels: mgmtApi.PageModel[] = [];
     try {
       pageModels = await mgmt.pageMethods.getPageTemplates(this._guid, this._locale, true);
-    } catch (err) {
+    } catch {
       // do nothing, empty array
     }
 
@@ -221,13 +215,10 @@ class Clean {
     return true;
   }
 
-  async cleanMedia(apiClient: any, multibar: any) {
+  async cleanMedia(multibar: any) {
     let assetsSync = new assetNew(options, multibar);
-    // TODO: we need to loop over the locales
-
     await assetsSync.deleteAllAssets(this._guid, this._locale, true);
     await assetsSync.deleteAllGalleries(this._guid, this._locale, true);
-
     return true;
   }
 }

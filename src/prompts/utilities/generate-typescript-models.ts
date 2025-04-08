@@ -14,15 +14,21 @@ import ansiColors = require("ansi-colors");
 import { homePrompt } from "../home-prompt";
 import fileSystemPrompt from "../file-system-prompt";
 import chalkAnimation from 'chalk-animation';
+import { AgilityInstance } from "../../types/instance";
+import { forceDevMode } from "../..";
 const axios = require("axios");
 
-let AI_ENDPOINT: string = "https://4a3b-2607-fea8-7d60-2b00-1d24-b69c-b93f-b227.ngrok-free.app/api/ai/cli/typescript-models";
+
+let AI_ENDPOINT_DEV:string = "https://bff.publishwithagility.com/api/ai/cli/typescript-models";
+let AI_ENDPOINT_PROD:string = "https://bff.agilitycms.com/api/ai/cli/typescript-models";
+
+let AI_ENDPOINT: string = forceDevMode ? AI_ENDPOINT_DEV : AI_ENDPOINT_PROD;
 let auth: Auth;
 
-export default async function generateTypes(selectedInstance: any) {
+export default async function generateTypes(selectedInstance: AgilityInstance) {
 
   console.log(ansiColors.yellow("Generating TypeScript models..."));
-  const locale = await localePrompt();
+  const locale = await localePrompt(selectedInstance);
   const filesPath = await fileSystemPrompt();
 
   auth = new Auth();

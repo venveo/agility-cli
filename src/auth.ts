@@ -1,8 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
-import { cliToken } from './models/cliToken';
+import { cliToken } from './types/cliToken';
 import { fileOperations } from './fileOperations';
-import { serverUser } from './models/serverUser';
-import { WebsiteUser } from './models/websiteUser';
+import { serverUser } from './types/serverUser';
+import { WebsiteUser } from './types/websiteUser';
 import { forceDevMode, forceLocalMode } from '.';
 const open = require('open');
 
@@ -26,7 +26,10 @@ export class Auth{
         if(forceLocalMode){
             return "https://localhost:5050";
         }
-        if(guid?.endsWith('d') || forceDevMode){
+        if(forceDevMode){
+            return "https://mgmt-dev.aglty.io";
+        }
+        if(guid?.endsWith('d')){
             return "https://mgmt-dev.aglty.io";
         }
         else if(guid?.endsWith('u')){
@@ -139,8 +142,13 @@ export class Auth{
 
     async cliPoll(formData: FormData, guid: string = 'blank-d'){
         let apiPath = `CliPoll`;
+        try {
         const response = await this.executePost(apiPath, guid, formData);
         return response.data as cliToken;
+    } catch (error) {
+        console.error('Error during CLI poll:', error);
+        throw error;
+    }
     }
 
     async getPreviewKey(guid: string, userBaseUrl: string = null){
@@ -201,29 +209,28 @@ export class Auth{
 
 
     async getUser(guid: string, token: string){
-        
+    
         let baseUrl = this.determineBaseUrl(guid);
-
         let apiPath = '/users/me';
-
         let endpoint = `${baseUrl}/api/v1${apiPath}`;
+
         try {
             const response = await fetch(endpoint, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Cache-Control': 'no-cache'
-            }
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
             });
 
             if (!response.ok) {
             throw new Error('Network response was not ok');
             }
 
-            const data = await response.json();
-            return data as serverUser;
+            const data:serverUser = await response.json();
+            return data;
         } catch (error) {
-            console.error('Fetch error:', error);
+            // console.error('Fetch error:', error);
             return null;
         }
     }

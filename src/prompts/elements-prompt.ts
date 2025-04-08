@@ -1,5 +1,6 @@
 import inquirer from "inquirer";
 import fuzzy from "fuzzy";
+import ansiColors from "ansi-colors";
 
 inquirer.registerPrompt('checkbox-plus', require('inquirer-checkbox-plus-prompt'));
 
@@ -7,6 +8,8 @@ export async function elementsPrompt() {
 
     var elements = ['Assets', 'Galleries', 'Models', 'Content Lists', 'Pages'];
     
+    console.log(ansiColors.red(`\n⚠️  It is advised to download the entirity of the instance, partial downloads may result in push issues.\n`));
+
     return inquirer.prompt([{
             type: 'checkbox-plus',
             name: 'elements',

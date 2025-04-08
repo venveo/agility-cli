@@ -14,14 +14,20 @@ import ansiColors = require("ansi-colors");
 import { homePrompt } from "../home-prompt";
 import fileSystemPrompt from "../file-system-prompt";
 import chalkAnimation from 'chalk-animation';
+import { AgilityInstance } from "../../types/instance";
 const axios = require("axios");
 
-let AI_ENDPOINT: string = "https://b3ce-174-93-30-12.ngrok-free.app/api/ai/cli/typescript-models";
+let AI_ENDPOINT: string = "https://4a3b-2607-fea8-7d60-2b00-1d24-b69c-b93f-b227.ngrok-free.app/api/ai/cli/react-components";
 let auth: Auth;
 
-export default async function generateReactComponents(selectedInstance: any) {
-  const locale = await localePrompt();
+export default async function generateReactComponents(selectedInstance: AgilityInstance) {
+  const locale = await localePrompt(selectedInstance);
+
+  console.log(locale)
+
   const filesPath = await fileSystemPrompt();
+
+
 
   auth = new Auth();
   let code = new fileOperations();
@@ -36,14 +42,14 @@ export default async function generateReactComponents(selectedInstance: any) {
   try {
 
     console.log('\n')
-    let str = "🤖 AI Generating TypeScript models";
+    let str = "🤖 AI Generating React Components";
     const rainbow = chalkAnimation.pulse(str);
 
     // Add a new dot every second
     let dotCount = 0;
     setInterval(() => {
       if (dotCount === 3) {
-      str = "🤖 AI Generating TypeScript models";
+      str = "🤖 AI Generating React Components";
       dotCount = 0;
       } else {
       str += '.';
@@ -78,12 +84,14 @@ export default async function generateReactComponents(selectedInstance: any) {
 
     reader.on("end", () => {
       rainbow.stop();
-      const modelsFilePath = path.join(filesPath, "models.ts");
-      const cleanedResult = result.replace(/^```typescript\s*/, "").replace(/```$/, "");
-      code.createFile(modelsFilePath, cleanedResult);
-      console.log(ansiColors.green("🚀 TypeScript models generated successfully!"));
-      console.log(`\nResponse written to ${modelsFilePath}`);
-      return true;
+      // const modelsFilePath = path.join(filesPath, "models.ts");
+   
+      console.log(result)
+      // const cleanedResult = result.replace(/^```typescript\s*/, "").replace(/```$/, "");
+      // code.createFile(modelsFilePath, cleanedResult);
+      // console.log(ansiColors.green("🚀 TypeScript models generated successfully!"));
+      // console.log(`\nResponse written to ${modelsFilePath}`);
+      // return true;
     });
 
     return await new Promise((resolve) => reader.on("end", resolve));

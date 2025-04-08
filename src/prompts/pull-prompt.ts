@@ -22,6 +22,7 @@ import { syncNew } from "../sync_new";
 import { containerNew } from "../container_new";
 import { assetNew } from "../asset_new";
 import { modelNew } from "../model_new";
+import { AgilityInstance } from "../types/instance";
 
 inquirer.registerPrompt('fuzzypath', require('inquirer-fuzzy-path'))
 
@@ -31,34 +32,17 @@ let auth: Auth;
 let options: mgmtApi.Options;
 
 
-export async function pullFiles(instance: any) {
+export async function pullFiles(selectedInstance: AgilityInstance) {
     
-    const { guid, websiteName } = instance;
+    const { guid } = selectedInstance;
 
-    const locale = await localePrompt();
+    const locale = await localePrompt(selectedInstance);
     const channel = await channelPrompt();
     const preview = await isPreviewPrompt();
     const baseUrl = await getBaseURLfromGUID(guid);
     const elements:any = await elementsPrompt();
-    // const action:any = await pullPrompt(guid);
     
     downloadFiles(guid, locale, channel, baseUrl, preview, elements);
-
-    // now handle the actions
-    // switch (action) {
-    //   case "Download":
-    //     downloadFiles(guid, locale, channel, baseUrl, preview, elements);
-    //     break;
-    //   case "Push to another instance":
-    //     let pushToInstance = await instanceSelector();
-    //     console.log('🚀 ','Pushing ', guid, 'to ➡️', pushToInstance.guid);
-    //     break;
-    //   case "< Back to Home":
-    //     homePrompt();
-    //     break;
-    //   default:
-    //     break;
-    // }
 }
 
 
@@ -75,13 +59,13 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
         const form = new FormData();
         form.append('cliCode', data.code);
         
-        // let guid: string = guid as string;
         let userBaseUrl: string = baseUrl as string;
         let token = await auth.cliPoll(form, guid);
         let multibar = createMultibar({name: 'Pull'});
 
         options = new mgmtApi.Options();
         options.token = token.access_token;
+        options.baseUrl = auth.determineBaseUrl(guid);
 
         let user = await auth.getUser(guid, token.access_token);
 
@@ -99,7 +83,7 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                 code.createFolder(`/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`);
       
                 if(syncKey){
-                    console.log(colors.yellow(`Downloading your instance to ${process.cwd()}/.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
+                    console.log(colors.yellow(`\n Downloading your instance to ${process.cwd()}/.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
 
                     let contentPageSync = new syncNew(guid, syncKey, locale, channel, options, multibar, isPreview);
                     let assetsSync = new assetNew(options, multibar);
@@ -133,7 +117,7 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                     
                     multibar.stop()
                     // await new Promise(resolve => setTimeout(resolve, 500));
-                    console.log(colors.green('✅ Download complete!'));
+                    console.log(colors.green('\n✅ Download complete!\n'));
                     homePrompt();
 
 
