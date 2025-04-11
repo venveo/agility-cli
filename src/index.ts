@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 import * as yargs from "yargs";
 import { Auth } from "./auth";
@@ -22,7 +21,7 @@ import { FilterData, ModelFilter } from "./types/modelFilter";
 import { create } from "domain";
 import { homePrompt } from "./prompts/home-prompt";
 import { exit } from "process";
-import chalk from "chalk";
+import ansiColors from "ansi-colors";
 
 let auth: Auth;
 export let forceDevMode: boolean = false;
@@ -35,7 +34,6 @@ export let token: string = null;
 let options: mgmtApi.Options;
 
 yargs.version("0.0.1_beta").demand(1).exitProcess(false);
-
 
 console.log(colors.yellow("Welcome to Agility CLI."));
 yargs.command({
@@ -50,40 +48,20 @@ yargs.command({
   },
   handler: async function (argv) {
     let auth = new Auth();
-    let isAuthenticated = false;
-
-    let code = new fileOperations();
-    let codeFileStatus = code.codeFileExists();
 
     if(argv.dev){
-      console.log("🟢 Connected to Agility " + chalk.underline("Dev Servers"));
-      code.deleteCodeFile();
-      auth.authorize();
       forceDevMode = true;
     }
 
     if(argv.local){
-      console.log(colors.white("🟢 Connected to https://localhost:5050"));
       forceLocalMode = true;
     }
 
-
-
-    if (!codeFileStatus) {
-      console.log(colors.white(`\nLaunching authentication in browser...`));
-      auth.authorize();
+    const isAuthorized = await auth.checkAuthorization();
+    if(isAuthorized){
+      homePrompt();
+      return;
     }
-
-    const interval = setInterval(() => {
-      let code = new fileOperations();
-      if (code.codeFileExists()) {
-        isAuthenticated = true;
-        console.log(colors.green("You have successfully authenticated."));
-        console.log('------------------------------------\n');
-        clearInterval(interval);
-        homePrompt();
-      }
-    }, 1000); // Check every second
   },
 });
 
@@ -107,8 +85,8 @@ yargs.command({
   command: "logout",
   describe: "Log out of Agility.",
   handler: async function () {
-    let code = new fileOperations();
-    code.deleteCodeFile();
+    let auth = new Auth();
+    await auth.logout();
   },
 });
   
@@ -132,7 +110,7 @@ yargs.command({
           type: 'boolean'
       },
       folder: {
-          describe: 'Specify the path of the folder where models and template folders are present for model sync. If no value provided, the default folder will be .agility-files.',
+          describe: 'Specify the path of the folder where models and template folders are present for model sync. If no value provided, the default folder will be agility-files.',
           demandOption: false,
           type: 'string'
       },
@@ -177,7 +155,6 @@ yargs.command({
               authGuid = targetGuid;
           }
           
-          let token = await auth.cliPoll(form, authGuid);
 
           let models: mgmtApi.Model[] = [];
 
@@ -185,9 +162,6 @@ yargs.command({
 
           let multibar = createMultibar({name: 'Sync Models'});
 
-          options = new mgmtApi.Options();
-          options.token = token.access_token;
-          
           if(dryRun === undefined){
               dryRun = false;
           }
@@ -198,9 +172,9 @@ yargs.command({
               filterSync = '';
           }
           if(folder === undefined){
-              folder = '.agility-files';
+              folder = 'agility-files';
           }
-          let user = await auth.getUser(authGuid, token.access_token);
+          let user = await auth.getUser(authGuid);
 
           if(!instancePull){
               if(!code.checkBaseFolderExists(folder)){
@@ -216,8 +190,8 @@ yargs.command({
               if(targetGuid === undefined){
                   targetGuid = '';
               }
-              let sourcePermitted = await auth.checkUserRole(guid, token.access_token);
-              let targetPermitted = await auth.checkUserRole(targetGuid, token.access_token);
+              let sourcePermitted = await auth.checkUserRole(guid);
+              let targetPermitted = await auth.checkUserRole(targetGuid);
               if(guid === ''){
                   sourcePermitted = true;
               }
@@ -332,27 +306,20 @@ yargs.command({
       auth = new Auth();
       let code = new fileOperations();
       let codeFileStatus = code.codeFileExists();
-      if(codeFileStatus){
-          let data = JSON.parse(code.readTempFile('code.json'));
-          
-          const form = new FormData();
-          form.append('cliCode', data.code);
+      if(codeFileStatus){          
+       
           let guid: string = argv.sourceGuid as string;
           let folder: string = argv.folder as string;
-          let token = await auth.cliPoll(form, guid);
           let multibar = createMultibar({name: 'Model Pull'});
 
-          options = new mgmtApi.Options();
-          options.token = token.access_token;
-
           if(folder === undefined){
-              folder = '.agility-files';
+              folder = 'agility-files';
           }
 
-          let user = await auth.getUser(guid, token.access_token);
+          let user = await auth.getUser(guid);
 
           if(user){
-              let sourcePermitted = await auth.checkUserRole(guid, token.access_token);
+              let sourcePermitted = await auth.checkUserRole(guid);
 
               if(sourcePermitted){
                   code.cleanup(folder);
@@ -415,28 +382,19 @@ yargs.command({
       let code = new fileOperations();
       let codeFileStatus = code.codeFileExists();
       if(codeFileStatus){
-          code.cleanup('.agility-files');
+          code.cleanup('agility-files');          
           
-          let data = JSON.parse(code.readTempFile('code.json'));
-          
-          const form = new FormData();
-          form.append('cliCode', data.code);
           let guid: string = argv.guid as string;
           let locale: string = argv.locale as string;
           let channel: string = argv.channel as string;
           let userBaseUrl: string = argv.baseUrl as string;
 
-          let token = await auth.cliPoll(form, guid);
-
           let multibar = createMultibar({name: 'Pull'});
 
-          options = new mgmtApi.Options();
-          options.token = token.access_token;
-
-          let user = await auth.getUser(guid, token.access_token);
+          let user = await auth.getUser(guid);
 
           if(user){
-              let permitted = await auth.checkUserRole(guid, token.access_token);
+              let permitted = await auth.checkUserRole(guid);
               if(permitted){
                   let syncKey = await auth.getPreviewKey(guid, userBaseUrl);
                   if(syncKey){
@@ -503,21 +461,14 @@ yargs.command({
      if(codeFileStatus){
       let agilityFolder = code.cliFolderExists();
       if(agilityFolder){
-          let data = JSON.parse(code.readTempFile('code.json'));
-
+         
           let multibar = createMultibar({name: 'Push'});
-          
-          const form = new FormData();
-          form.append('cliCode', data.code);
+         
+         
 
-          let token = await auth.cliPoll(form, guid);
-
-          options = new mgmtApi.Options();
-          options.token = token.access_token;
-
-          let user = await auth.getUser(guid, token.access_token);
+          let user = await auth.getUser(guid);
           if(user){
-              let permitted = await auth.checkUserRole(guid, token.access_token);
+              let permitted = await auth.checkUserRole(guid);
               if(permitted){
                   console.log(colors.yellow('Pushing your instance...'));
                   let pushSync = new push(options, multibar);
@@ -588,9 +539,9 @@ yargs.command({
               options = new mgmtApi.Options();
               options.token = token.access_token;
 
-              const user = await auth.getUser(guid, token.access_token);
+              const user = await auth.getUser(guid);
               if (user) {
-                  const permitted = await auth.checkUserRole(guid, token.access_token);
+                  const permitted = await auth.checkUserRole(guid);
                   if (permitted) {
                       console.log('-----------------------------------------------');
                       console.log(colors.yellow('Updating your content items...'));
@@ -687,9 +638,9 @@ yargs.command({
               options = new mgmtApi.Options();
               options.token = token.access_token;
 
-              const user = await auth.getUser(guid, token.access_token);
+              const user = await auth.getUser(guid);
               if (user) {
-                  const permitted = await auth.checkUserRole(guid, token.access_token);
+                  const permitted = await auth.checkUserRole(guid);
                   if (permitted) {
                       console.log('-----------------------------------------------');
                       console.log(colors.yellow('Publishing your content items...'));
@@ -771,19 +722,19 @@ yargs.command({
      auth = new Auth();
      let codeFileStatus = code.codeFileExists();
      if(codeFileStatus){
-      code.cleanup('.agility-files');
+      code.cleanup('agility-files');
       let data = JSON.parse(code.readTempFile('code.json'));
       const form = new FormData();
       form.append('cliCode', data.code);
 
       let token = await auth.cliPoll(form, sourceGuid);
 
-      let user = await auth.getUser(sourceGuid, token.access_token);
+      let user = await auth.getUser(sourceGuid);
 
       if(user){
 
-          let sourcePermitted = await auth.checkUserRole(sourceGuid, token.access_token);
-          let targetPermitted = await auth.checkUserRole(targetGuid, token.access_token);
+          let sourcePermitted = await auth.checkUserRole(sourceGuid);
+          let targetPermitted = await auth.checkUserRole(targetGuid);
 
           if(sourcePermitted && targetPermitted){
               console.log(colors.yellow('Cloning your instance...'));

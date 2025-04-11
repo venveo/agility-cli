@@ -70,7 +70,7 @@ export class container{
         let file = new fileOperations();
         for(let i = 0; i < containers.length; i++){
             let fileName = `${containers[i]}.json`;
-            file.deleteFile(`.agility-files/containers/${fileName}`);
+            file.deleteFile(`agility-files/containers/${fileName}`);
         }
     }
 }

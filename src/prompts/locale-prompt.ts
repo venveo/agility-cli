@@ -3,26 +3,24 @@ import { Auth } from '../auth';
 import { fileOperations } from '../fileOperations';
 import { AgilityInstance } from '../types/instance';
 import * as mgmtApi  from '@agility/management-sdk';
+import { getBaseURLfromGUID } from './base-url-prompt';
 const FormData = require("form-data");
 
 let auth: Auth;
 export async function localePrompt(selectedInstance:AgilityInstance) {
 
     auth = new Auth();
-    const code = new fileOperations();
-    let data = JSON.parse(code.readTempFile("code.json"));
-    const form = new FormData();
-
-    form.append("cliCode", data.code);
-  
+   
+   
     let guid: string = selectedInstance.guid;
-    let token = await auth.cliPoll(form, guid);
-
+   
     let options = new mgmtApi.Options();
-    options.token = token.access_token;
+    options.token = await auth.getToken();
+    options.baseUrl = auth.determineBaseUrl(guid);
 
     let apiClient = new mgmtApi.ApiClient(options);
 
+    try {
     let localesArr = await apiClient.instanceMethods.getLocales(guid);
   
     let locales = localesArr.map((locale: mgmtApi.Locales) => { 
@@ -43,4 +41,9 @@ export async function localePrompt(selectedInstance:AgilityInstance) {
     const answers = await inquirer.prompt(questions);
 
     return answers.locales;
+
+    } catch (error) {
+        console.error("Error fetching locales:", error);
+        return null;
+    }
 }

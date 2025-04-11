@@ -120,14 +120,14 @@ export class asset{
             if(folderPath){ 
                 fileExport.createFolder(`assets/${folderPath}`);
                 try{
-                    await fileExport.downloadFile(originUrl, `.agility-files/assets/${folderPath}/${fileName}`);
+                    await fileExport.downloadFile(originUrl, `agility-files/assets/${folderPath}/${fileName}`);
                 } catch{
                     this.unProcessedAssets[assetMediaID] = fileName;
                 }
             }
             else{
                 try{
-                    await fileExport.downloadFile(originUrl, `.agility-files/assets/${fileName}`);
+                    await fileExport.downloadFile(originUrl, `agility-files/assets/${fileName}`);
                 } catch{
                     this.unProcessedAssets[assetMediaID] = fileName;
                 }
@@ -159,7 +159,7 @@ export class asset{
                     if(folderPath){ 
                         fileExport.createFolder(`assets/${folderPath}`);
                         try{
-                            await fileExport.downloadFile(originUrl, `.agility-files/assets/${folderPath}/${fileName}`);
+                            await fileExport.downloadFile(originUrl, `agility-files/assets/${folderPath}/${fileName}`);
                         } catch{
                             this.unProcessedAssets[mediaID] = fileName;
                         }
@@ -167,7 +167,7 @@ export class asset{
                     }
                     else{
                         try{
-                            await fileExport.downloadFile(originUrl, `.agility-files/assets/${fileName}`);
+                            await fileExport.downloadFile(originUrl, `agility-files/assets/${fileName}`);
                         } catch{
                             this.unProcessedAssets[mediaID] = fileName;
                         }

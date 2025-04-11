@@ -2,11 +2,11 @@ import inquirer from "inquirer";
 import colors from "ansi-colors";
 import { pullFiles } from "./pull-prompt";
 import { listInstances } from "./instances/list";
-import { logout } from "./logout";
 import process from "process";
-import { instanceSelector } from "./instances/selector";
+import { instanceSelector } from "./instances/instance-list";
 import { getInstance, instancesPrompt } from "./instance-prompt";
 import { forceDevMode } from "..";
+import { Auth } from "../auth";
 
 export async function homePrompt(prompt?: any) {
     await inquirer
@@ -53,7 +53,8 @@ export async function homePrompt(prompt?: any) {
         //   fetchAPI();
         //   break;
         case "Logout":
-          logout();
+          const auth = new Auth();
+          await auth.logout();
           break;
         default:
           console.log(colors.red("Invalid option selected."));

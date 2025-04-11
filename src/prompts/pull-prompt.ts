@@ -1,7 +1,7 @@
 import inquirer from "inquirer";
 import fuzzy from "fuzzy";
 import colors from "ansi-colors";
-import { instanceSelector } from "./instances/selector";
+import { instanceSelector } from "./instances/instance-list";
 import { homePrompt } from "./home-prompt";
 import { Auth } from "../auth";
 import { model } from "../model";
@@ -49,41 +49,38 @@ export async function pullFiles(selectedInstance: AgilityInstance) {
 async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any, elements: any) {
     auth = new Auth();
     let code = new fileOperations();
-    let codeFileStatus = code.codeFileExists();
+        code.cleanup(`agility-files/${guid}/${isPreview ? "preview" : "live"}`); 
 
-    if(codeFileStatus){
-        code.cleanup(`.agility-files/${guid}/${isPreview ? "preview" : "live"}`); 
+        // let data = JSON.parse(code.readTempFile('code.json'));
 
-        let data = JSON.parse(code.readTempFile('code.json'));
-
-        const form = new FormData();
-        form.append('cliCode', data.code);
+        // const form = new FormData();
+        // form.append('cliCode', data.code);
         
         let userBaseUrl: string = baseUrl as string;
-        let token = await auth.cliPoll(form, guid);
+        // let token = await auth.cliPoll(form, guid);
         let multibar = createMultibar({name: 'Pull'});
 
         options = new mgmtApi.Options();
-        options.token = token.access_token;
+        options.token = await auth.getToken();
         options.baseUrl = auth.determineBaseUrl(guid);
 
-        let user = await auth.getUser(guid, token.access_token);
+        let user = await auth.getUser(guid);
 
         if(user){
-            let permitted = await auth.checkUserRole(guid, token.access_token);
+            let permitted = await auth.checkUserRole(guid);
             if(permitted){
 
                 const base = auth.determineBaseUrl(guid);
+
                 let previewKey = await auth.getPreviewKey(guid, userBaseUrl ? userBaseUrl : base);
                 let fetchKey = await auth.getFetchKey(guid, userBaseUrl ? userBaseUrl : base)
                 let syncKey = isPreview ? previewKey : fetchKey;
-
 
                 // we need to make sure the base folder exists for this pull request
                 code.createFolder(`/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`);
       
                 if(syncKey){
-                    console.log(colors.yellow(`\n Downloading your instance to ${process.cwd()}/.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
+                    console.log(colors.yellow(`\n Downloading your instance to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
 
                     let contentPageSync = new syncNew(guid, syncKey, locale, channel, options, multibar, isPreview);
                     let assetsSync = new assetNew(options, multibar);
@@ -136,10 +133,7 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
             console.log(colors.red('Please authenticate first to perform the pull operation.'));
         }
 
-    }
-    else{
-        console.log(colors.red('Please authenticate first to perform the pull operation.'));
-    }
+    
 }
 
 async function pullPrompt(guid: string) {

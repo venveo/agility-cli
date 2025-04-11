@@ -13,7 +13,7 @@ export class model{
 
     async getModels(guid: string, baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = '.agility-files';
+            baseFolder = 'agility-files';
         }
         let apiClient = new mgmtApi.ApiClient(this._options);
         try{
@@ -84,7 +84,7 @@ export class model{
         let file = new fileOperations();
         for(let i = 0; i < models.length; i++){
             let fileName = `${models[i]}.json`;
-            file.deleteFile(`.agility-files/models/${fileName}`);
+            file.deleteFile(`agility-files/models/${fileName}`);
         }
     }
 }

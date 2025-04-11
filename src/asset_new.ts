@@ -160,7 +160,7 @@ export class assetNew {
         try {
           await fileExport.downloadFile(
             originUrl,
-            `.agility-files/${guid}/${locale}/${
+            `agility-files/${guid}/${locale}/${
               isPreview ? "preview" : "live"
             }/assets/${folderPath}/${fileName}`
           );
@@ -171,7 +171,7 @@ export class assetNew {
         try {
           await fileExport.downloadFile(
             originUrl,
-            `.agility-files/${guid}/${locale}/${
+            `agility-files/${guid}/${locale}/${
               isPreview ? "preview" : "live"
             }/assets/${fileName}`
           );
@@ -219,7 +219,7 @@ export class assetNew {
             try {
               await fileExport.downloadFile(
                 originUrl,
-                `.agility-files/${guid}/${locale}/${
+                `agility-files/${guid}/${locale}/${
                   isPreview ? "preview" : "live"
                 }/assets/${folderPath}/${fileName}`
               );
@@ -230,7 +230,7 @@ export class assetNew {
             try {
               await fileExport.downloadFile(
                 originUrl,
-                `.agility-files/${guid}/${locale}/${
+                `agility-files/${guid}/${locale}/${
                   isPreview ? "preview" : "live"
                 }/assets/${fileName}`
               );

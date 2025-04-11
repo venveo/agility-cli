@@ -13,7 +13,9 @@ import * as path from "path";
 import ansiColors = require("ansi-colors");
 import { homePrompt } from "../home-prompt";
 import fileSystemPrompt from "../file-system-prompt";
-import chalkAnimation from 'chalk-animation';
+
+
+
 import { AgilityInstance } from "../../types/instance";
 const axios = require("axios");
 
@@ -43,20 +45,20 @@ export default async function generateReactComponents(selectedInstance: AgilityI
 
     console.log('\n')
     let str = "🤖 AI Generating React Components";
-    const rainbow = chalkAnimation.pulse(str);
+    // const rainbow = chalkAnimation.pulse(str);
 
-    // Add a new dot every second
-    let dotCount = 0;
-    setInterval(() => {
-      if (dotCount === 3) {
-      str = "🤖 AI Generating React Components";
-      dotCount = 0;
-      } else {
-      str += '.';
-      dotCount++;
-      }
-      rainbow.replace(str);
-    }, 1000);
+    // // Add a new dot every second
+    // let dotCount = 0;
+    // setInterval(() => {
+    //   if (dotCount === 3) {
+    //   str = "🤖 AI Generating React Components";
+    //   dotCount = 0;
+    //   } else {
+    //   str += '.';
+    //   dotCount++;
+    //   }
+    //   rainbow.replace(str);
+    // }, 1000);
 
 
     // lets hit the AI_ENDPOINT
@@ -83,7 +85,7 @@ export default async function generateReactComponents(selectedInstance: AgilityI
     });
 
     reader.on("end", () => {
-      rainbow.stop();
+      // rainbow.stop();
       // const modelsFilePath = path.join(filesPath, "models.ts");
    
       console.log(result)

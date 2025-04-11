@@ -4,33 +4,16 @@ import { fileOperations } from "../../fileOperations";
 
 import colors from "ansi-colors";
 import { homePrompt } from "../home-prompt";
-import { logout } from "../logout";
 const FormData = require("form-data");
 
 export async function instanceSelector() {
   let auth = new Auth();
-  let code = new fileOperations();
-  let data = JSON.parse(code.readTempFile("code.json"));
-
-  const form = new FormData();
-  form.append("cliCode", data.code);
-
-  let token = await auth.cliPoll(form, null);
-  let user = await auth.getUser(null, token.access_token);
-  if(!user) {
-    // if there's no user coming back its because the user is not authed
-    await logout();
-    await auth.authorize();
-    homePrompt();
-    return;
-  }
-
+  let user = await auth.getUser();  
 
   let instances = user.websiteAccess;
   
-
   const instanceChoices = instances.map((instance: any) => ({
-    name: `${instance.websiteName} (${instance.guid})`,
+    name: `${instance.displayName} (${instance.guid})`,
     value: instance.guid,
     ...instance,
   }));
@@ -44,16 +27,15 @@ export async function instanceSelector() {
     },
   ]);
 
-//   return instanceAnswer
 
   const website = instances.find(
     (instance: any) => instance.guid === instanceAnswer.selectedInstance
   );
 
 
-  const { guid, websiteName } = website;
+  const { guid, websiteName, displayName } = website;
   console.log('------------------------------------------------');
-  console.log(colors.green('●'), colors.green(` (${guid})`), colors.white(websiteName));
+  console.log(colors.green('●'), colors.green(` ${displayName}`), colors.white(`${guid}`));
   console.log('------------------------------------------------');
 
   return website;

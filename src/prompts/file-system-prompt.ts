@@ -1,21 +1,30 @@
 import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
-import chalk from 'chalk';
+// import chalk from 'chalk';
+// const chalk = await import('chalk');
+// const inquirer = require("inquirer");
+import inquirerSearchList from 'inquirer-search-list';
+import ansiColors from 'ansi-colors';
 
-inquirer.registerPrompt('search-list', require('inquirer-search-list'));
+inquirer.registerPrompt('search-list', inquirerSearchList);
 
 export default async function fileSystemPrompt() {
+
+    
+
     const selectedDir = await selectDirectory();
     if (selectedDir) {
-        console.log(chalk.green(`✅ Selected directory: ${selectedDir}`));
+        console.log(ansiColors.green(`Selected directory: ${selectedDir}`));
     } else {
-        console.log(chalk.red('❌ Directory selection canceled.'));
+        console.log(ansiColors.red('Directory selection canceled.'));
     }
     return selectedDir;
 }
 
 async function selectDirectory(startingPath = process.cwd()) {
+
+    // inquirer.registerPrompt('search-list', import('inquirer-search-list'));
     let currentPath = startingPath;
 
     while (true) {
@@ -30,10 +39,10 @@ async function selectDirectory(startingPath = process.cwd()) {
 
         // Add navigation options
         const choices = [
-            { name: chalk.green('✔ Confirm this directory'), value: 'confirm' },
-            { name: chalk.blue('⬆️  Go up one level (..)'), value: 'up' },
+            { name: ansiColors.green('✔ Confirm this directory'), value: 'confirm' },
+            { name: ansiColors.blue('⬆️  Go up one level (..)'), value: 'up' },
             ...directories.map(dir => ({ name: `📁 ${dir}`, value: dir })),
-            { name: chalk.red('❌ Cancel'), value: 'cancel' }
+            { name: ansiColors.red('❌ Cancel'), value: 'cancel' }
         ];
 
         const { selectedPath } = await inquirer.prompt([

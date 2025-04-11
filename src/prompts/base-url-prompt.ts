@@ -1,9 +1,14 @@
 import inquirer from "inquirer";
+import { forceDevMode, forceLocalMode } from "..";
 
 
 export async function getBaseURLfromGUID(guid: string): Promise<string> {
   let baseUrl = "https://mgmt.aglty.io";
-  if (guid.endsWith("-d")) {
+  if(forceDevMode) {
+    baseUrl = "https://mgmt-dev.aglty.io";
+  } else if(forceLocalMode) {
+    baseUrl = "http://localhost:5050";
+  } else if (guid.endsWith("-d")) {
     baseUrl = "https://mgmt-dev.aglty.io";
   } else if (guid.endsWith("-c")) {
     baseUrl = "https://mgmt-ca.aglty.io";

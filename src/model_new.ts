@@ -13,7 +13,7 @@ export class modelNew{
 
     async getModels(guid: string, locale: string, isPreview: boolean = false, baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = `.agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`;
+            baseFolder = `agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`;
         }
 
         let apiClient = new mgmtApi.ApiClient(this._options);
@@ -85,7 +85,7 @@ export class modelNew{
         let file = new fileOperations();
         for(let i = 0; i < models.length; i++){
             let fileName = `${models[i]}.json`;
-            file.deleteFile(`.agility-files/${guid}/${locale}/${isPreview ? 'preview':'live'}/models/${fileName}`);
+            file.deleteFile(`agility-files/${guid}/${locale}/${isPreview ? 'preview':'live'}/models/${fileName}`);
         }
     }
 }

@@ -42,8 +42,8 @@ export class syncNew{
       const sync = await syncClient.runSync();
 
       // we need to move these files to the correct location
-      const sourceDir = path.join('.agility-files', this._locale);
-      const destDir = path.join(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}`);
+      const sourceDir = path.join('agility-files', this._guid, this._locale, this._isPreview ? 'preview':'live');
+      const destDir = path.join(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}`);
 
       if (!fs.existsSync(destDir)) {
          fs.mkdirSync(destDir, { recursive: true });
@@ -64,7 +64,7 @@ export class syncNew{
          }
       });
 
-      // remove the .agility-files/{locale} folder
+      // remove the agility-files/{locale} folder
       await fs.rmSync(sourceDir, { recursive: true, force: true });
 
 
@@ -75,7 +75,7 @@ export class syncNew{
 
      async getPageTemplates(baseFolder?: string){
       if(baseFolder === undefined || baseFolder === ''){
-         baseFolder = `.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview' : 'live'}`;
+         baseFolder = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview' : 'live'}`;
       }
       let apiClient = new mgmtApi.ApiClient(this._options);
       try{

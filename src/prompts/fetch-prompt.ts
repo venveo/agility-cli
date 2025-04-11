@@ -60,11 +60,11 @@ export async function fetchCommandsPrompt(
 
     data = sitemap;
     files.createFile(
-      `.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/sitemapFlat.json`,
+      `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/sitemapFlat.json`,
       JSON.stringify(sitemap, null, 2)
     );
     console.log(
-      `Sitemap saved to ${process.cwd()}/.agility-files/${guid}/${locale}/${
+      `Sitemap saved to ${process.cwd()}/agility-files/${guid}/${locale}/${
         isPreview ? "preview" : "live"
       }/fetch/sitemapFlat.json`
     );
@@ -79,11 +79,11 @@ export async function fetchCommandsPrompt(
 
     data = sitemapNested;
     files.createFile(
-      `.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/sitemapNested.json`,
+      `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/sitemapNested.json`,
       JSON.stringify(sitemapNested, null, 2)
     );
     console.log(
-      `Sitemap saved to ${process.cwd()}/.agility-files/${guid}/${locale}/${
+      `Sitemap saved to ${process.cwd()}/agility-files/${guid}/${locale}/${
         isPreview ? "preview" : "live"
       }/fetch/sitemapNested.json`
     );
@@ -107,11 +107,11 @@ export async function fetchCommandsPrompt(
 
     data = contentList;
     files.createFile(
-      `.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/${listAnswer.referenceName}.json`,
+      `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/${listAnswer.referenceName}.json`,
       JSON.stringify(contentList, null, 2)
     );
     console.log(
-      `Content list saved to ${process.cwd()}/.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/${
+      `Content list saved to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/${
         listAnswer.referenceName
       }.json`
     );
@@ -132,11 +132,11 @@ export async function fetchCommandsPrompt(
 
     data = contentItem;
     files.createFile(
-      `.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/contentItem-${itemAnswer.contentItemID}.json`,
+      `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/contentItem-${itemAnswer.contentItemID}.json`,
       JSON.stringify(contentItem, null, 2)
     );
     console.log(
-      `Content item saved to ${process.cwd()}/.agility-files/${guid}/${locale}/${
+      `Content item saved to ${process.cwd()}/agility-files/${guid}/${locale}/${
         isPreview ? "preview" : "live"
       }/fetch/contentItem-${itemAnswer.contentItemID}.json`
     );
@@ -155,11 +155,11 @@ export async function fetchCommandsPrompt(
     });
     data = page;
     files.createFile(
-      `.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/page-${pageAnswer.pageID}.json`,
+      `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/page-${pageAnswer.pageID}.json`,
       JSON.stringify(page, null, 2)
     );
     console.log(
-      `Page data saved to ${process.cwd()}/.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/page-${
+      `Page data saved to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/page-${
         pageAnswer.pageID
       }.json`
     );
@@ -181,14 +181,14 @@ export async function fetchCommandsPrompt(
 
     data = page;
     files.createFile(
-      `.agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/page-${pathAnswer.pagePath.replace(
+      `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/fetch/page-${pathAnswer.pagePath.replace(
         /\//g,
         "-"
       )}.json`,
       JSON.stringify(page, null, 2)
     );
     console.log(
-      `Page data saved to ${process.cwd()}/.agility-files/${guid}/${locale}/${
+      `Page data saved to ${process.cwd()}/agility-files/${guid}/${locale}/${
         isPreview ? "preview" : "live"
       }/fetch/page-${pathAnswer.pagePath.replace(/\//g, "-")}.json`
     );

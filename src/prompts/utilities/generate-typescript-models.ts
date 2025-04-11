@@ -13,69 +13,49 @@ import * as path from "path";
 import ansiColors = require("ansi-colors");
 import { homePrompt } from "../home-prompt";
 import fileSystemPrompt from "../file-system-prompt";
-import chalkAnimation from 'chalk-animation';
+// import chalkAnimation from 'chalk-animation';
+// const chalkAnimation = import('chalk-animation');
 import { AgilityInstance } from "../../types/instance";
 import { forceDevMode } from "../..";
 const axios = require("axios");
 
-
-let AI_ENDPOINT_DEV:string = "https://bff.publishwithagility.com/api/ai/cli/typescript-models";
+let AI_ENDPOINT_DEV:string = "https://manager-bff-qa-git-cli-ai.publishwithagility.com/api/ai/cli/typescript-models";
+// let AI_ENDPOINT_DEV:string = "https://bff.publishwithagility.com/api/ai/cli/typescript-models";
 let AI_ENDPOINT_PROD:string = "https://bff.agilitycms.com/api/ai/cli/typescript-models";
 
-let AI_ENDPOINT: string = forceDevMode ? AI_ENDPOINT_DEV : AI_ENDPOINT_PROD;
-let auth: Auth;
 
 export default async function generateTypes(selectedInstance: AgilityInstance) {
+  
+  let AI_ENDPOINT: string = forceDevMode ? AI_ENDPOINT_DEV : AI_ENDPOINT_PROD;
 
-  console.log(ansiColors.yellow("Generating TypeScript models..."));
+
+  // console.log('AI_ENDPOINT', AI_ENDPOINT);
+
   const locale = await localePrompt(selectedInstance);
   const filesPath = await fileSystemPrompt();
 
-  auth = new Auth();
-  let code = new fileOperations();
+  console.log(ansiColors.yellow("Generating TypeScript interfaces..."));
 
-  let data = JSON.parse(code.readTempFile("code.json"));
-  const form = new FormData();
-  form.append("cliCode", data.code);
-
+  const auth = new Auth();
+  const code = new fileOperations();
   let guid: string = selectedInstance.guid as string;
-  let token = await auth.cliPoll(form, guid);
-
+  const token = await auth.getToken();
+ 
   try {
-
-    console.log('\n')
-    let str = "🤖 AI Generating TypeScript models";
-    const rainbow = chalkAnimation.pulse(str);
-
-    // Add a new dot every second
-    let dotCount = 0;
-    setInterval(() => {
-      if (dotCount === 3) {
-      str = "🤖 AI Generating TypeScript models";
-      dotCount = 0;
-      } else {
-      str += '.';
-      dotCount++;
-      }
-      rainbow.replace(str);
-    }, 1000);
-
-
     // lets hit the AI_ENDPOINT
     const response = await axios.post(
       AI_ENDPOINT,
       {},
       {
-      headers: {
-        AUTHORIZATION: `Bearer ${token.access_token}`,
-        "Content-Type": "application/json",
-        "agility-guid": guid,
-        "agility-locale": locale,
-      },
-      responseType: "stream",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "agility-guid": guid,
+          "agility-locale": locale,
+        },
+        responseType: "stream",
       }
     );
-
 
     const reader = response.data;
     const decoder = new TextDecoder("utf-8");
@@ -86,7 +66,6 @@ export default async function generateTypes(selectedInstance: AgilityInstance) {
     });
 
     reader.on("end", () => {
-      rainbow.stop();
       const modelsFilePath = path.join(filesPath, "models.ts");
       const cleanedResult = result.replace(/^```typescript\s*/, "").replace(/```$/, "");
       code.createFile(modelsFilePath, cleanedResult);
@@ -97,7 +76,11 @@ export default async function generateTypes(selectedInstance: AgilityInstance) {
 
     await new Promise((resolve) => reader.on("end", resolve));
   } catch (error) {
-    console.error("Error occurred while hitting AI_ENDPOINT:", error);
+    const timestamp = new Date().toISOString();
+    code.appendLogFile(`${timestamp} Error generating TypeScript interfaces: ${error} - ${AI_ENDPOINT}\n`);
+    console.log(ansiColors.red(`Error occurred while generating TypeScript interfaces.`));
+    homePrompt();
+  
   }
 
 }

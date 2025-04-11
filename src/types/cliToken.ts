@@ -5,4 +5,5 @@ export class cliToken{
     expires_in : number| null;
     token_type : string| null;
     refresh_token : string| null;
+    timestamp: string | null;
 }

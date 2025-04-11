@@ -4,7 +4,7 @@ import { localePrompt } from "../locale-prompt";
 import { baseUrlPrompt } from "../base-url-prompt";
 import { isPreviewPrompt } from "../isPreview-prompt";
 import { homePrompt } from "../home-prompt";
-import { instanceSelector } from "../instances/selector";
+import { instanceSelector } from "../instances/instance-list";
 import { channelPrompt } from "../channel-prompt";
 import { getInstance } from "../instance-prompt";
 import fileSystemPrompt from "../file-system-prompt";

@@ -40,7 +40,7 @@ export class pushNew{
     createAllContent(){
         let fileOperation = new fileOperations();
         try{
-            let files = fileOperation.readFile('.agility-files/all/all.json');
+            let files = fileOperation.readFile('agility-files/all/all.json');
             let contentItems = JSON.parse(files) as mgmtApi.ContentItem[];
 
             return contentItems;
@@ -53,7 +53,7 @@ export class pushNew{
     createLinkedContent(){
         let fileOperation = new fileOperations();
         try{
-            let files = fileOperation.readFile('.agility-files/linked/linked.json');
+            let files = fileOperation.readFile('agility-files/linked/linked.json');
             let contentItems = JSON.parse(files) as mgmtApi.ContentItem[];
 
             return contentItems;
@@ -66,7 +66,7 @@ export class pushNew{
     createNonLinkedContent(){
         let fileOperation = new fileOperations();
         try{
-            let files = fileOperation.readFile('.agility-files/nonlinked/nonlinked.json');
+            let files = fileOperation.readFile('agility-files/nonlinked/nonlinked.json');
             let contentItems = JSON.parse(files) as mgmtApi.ContentItem[];
 
             return contentItems;
@@ -79,7 +79,7 @@ export class pushNew{
 
     getBaseModels(baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = '.agility-files';
+            baseFolder = 'agility-files';
           }
         let fileOperation = new fileOperations();
         try{
@@ -102,7 +102,7 @@ export class pushNew{
 
     getBaseModel(modelId: string, baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = '.agility-files';
+            baseFolder = 'agility-files';
         }
         let fileOperation = new fileOperations();
         try{
@@ -173,7 +173,7 @@ export class pushNew{
 
     async createBaseTemplates(baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = '.agility-files';
+            baseFolder = 'agility-files';
         }
         let fileOperation = new fileOperations();
         try{
@@ -584,7 +584,7 @@ export class pushNew{
                                                 }
                                                 else{
                                                     try{
-                                                        let file = fileOperation.readFile(`.agility-files/${locale}/item/${id}.json`);
+                                                        let file = fileOperation.readFile(`agility-files/${locale}/item/${id}.json`);
                                                         contentItem = null;
                                                         break;
                                                     } catch{
@@ -627,7 +627,7 @@ export class pushNew{
                                                 }
                                                 else{
                                                     try{
-                                                        let file = fileOperation.readFile(`.agility-files/${locale}/item/${id}.json`);
+                                                        let file = fileOperation.readFile(`agility-files/${locale}/item/${id}.json`);
                                                         contentItem = null;
                                                         break;
                                                     } catch{
@@ -653,13 +653,13 @@ export class pushNew{
                                              continue;
                                          }
                                          if(this.processedContentIds[linkedContentId]){
-                                             let file = fileOperation.readFile(`.agility-files/${locale}/item/${linkedContentId}.json`);
+                                             let file = fileOperation.readFile(`agility-files/${locale}/item/${linkedContentId}.json`);
                                              let extractedContent = JSON.parse(file) as mgmtApi.ContentItem;
                                              contentItem.fields[fieldName] = extractedContent.properties.referenceName; 
                                          }
                                          else{
                                              try{
-                                                 let file = fileOperation.readFile(`.agility-files/${locale}/item/${linkedContentId}.json`);
+                                                 let file = fileOperation.readFile(`agility-files/${locale}/item/${linkedContentId}.json`);
                                                  contentItem = null;
                                                  break;
                                              }
@@ -714,7 +714,7 @@ export class pushNew{
                                              }
                                              else{
                                                  try{
-                                                     let file = fileOperation.readFile(`.agility-files/${locale}/item/${sortid}.json`);
+                                                     let file = fileOperation.readFile(`agility-files/${locale}/item/${sortid}.json`);
                                                      contentItem = null;
                                                      break;
                                                  } catch{
@@ -1113,8 +1113,8 @@ export class pushNew{
                 try{
                     let existingLinked = await apiClient.modelMethods.getModelByReferenceName(modelRef, guid);
                     if(existingLinked){
-                        if(fileOperation.checkFileExists(`.agility-files/models/${existingLinked.id}.json`)){
-                            let file = fileOperation.readFile(`.agility-files/models/${existingLinked.id}.json`);
+                        if(fileOperation.checkFileExists(`agility-files/models/${existingLinked.id}.json`)){
+                            let file = fileOperation.readFile(`agility-files/models/${existingLinked.id}.json`);
                             const modelData = JSON.parse(file) as mgmtApi.Model;
                             differences =  await this.findModelDifferences(modelData, existingLinked, model.referenceName);
                         }
@@ -1508,8 +1508,8 @@ export class pushNew{
         let defaultContainer = await apiClient.assetMethods.getDefaultContainer(guid);
         let fileOperation = new fileOperations();
 
-        let failedAssetsExists = fileOperation.fileExists(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`);
-        let file = failedAssetsExists ? fileOperation.readFile(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`): null;
+        let failedAssetsExists = fileOperation.fileExists(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`);
+        let file = failedAssetsExists ? fileOperation.readFile(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`): null;
 
         let unProcessedAssets = JSON.parse(file) as {};
 
@@ -1555,7 +1555,7 @@ export class pushNew{
                 }
                 let orginUrl = `${defaultContainer.originUrl}/${filePath}`;
                 const form = new FormData();
-                const file = fs.readFileSync(`.agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/${filePath}`, null);
+                const file = fs.readFileSync(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/${filePath}`, null);
                 form.append('files',file, media.fileName);
                 let mediaGroupingID = -1;
                 try{
@@ -1707,15 +1707,15 @@ async updateContentItems(guid: string, locale: string, selectedContentItems: str
             }
 
             try {
-                const file = fileOperation.readFile(`.agility-files/${locale}/item/${contentItemId}.json`);
+                const file = fileOperation.readFile(`agility-files/${locale}/item/${contentItemId}.json`);
                 const contentItem = JSON.parse(file) as mgmtApi.ContentItem;
 
                 try {
-                    const containerFile = fileOperation.readFile(`.agility-files/containers/${this.camelize(contentItem.properties.referenceName)}.json`);
+                    const containerFile = fileOperation.readFile(`agility-files/containers/${this.camelize(contentItem.properties.referenceName)}.json`);
                     const container = JSON.parse(containerFile) as mgmtApi.Container;
 
                     const modelId = container.contentDefinitionID;
-                    const modelFile = fileOperation.readFile(`.agility-files/models/${modelId}.json`);
+                    const modelFile = fileOperation.readFile(`agility-files/models/${modelId}.json`);
                     const model = JSON.parse(modelFile) as mgmtApi.Model;
 
                     const currentModel = await apiClient.modelMethods.getContentModel(modelId, guid);
@@ -1761,7 +1761,7 @@ async updateContentItems(guid: string, locale: string, selectedContentItems: str
             } catch {
                 notOnSource.push(contentItemId);
                 this.skippedContentItems[contentItemId] = contentItemId.toString();
-                fileOperation.appendLogFile(`\n There was a problem reading .agility-files/${locale}/item/${contentItemId}.json`);
+                fileOperation.appendLogFile(`\n There was a problem reading agility-files/${locale}/item/${contentItemId}.json`);
                 continue;
             }
 

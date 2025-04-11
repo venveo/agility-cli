@@ -7,7 +7,7 @@ export class fileOperations{
 
     exportFiles(folder: string, fileIdentifier: any, extractedObject: any, baseFolder?: string){
       if(baseFolder === undefined || baseFolder === ''){
-             baseFolder = '.agility-files';
+             baseFolder = 'agility-files';
         }
         if(!fs.existsSync(`${baseFolder}/${folder}`)){
             fs.mkdirSync(`${baseFolder}/${folder}`);
@@ -18,17 +18,20 @@ export class fileOperations{
     }
 
     appendFiles(folder: string, fileIdentifier: any, extractedObject: any){
-      if(!fs.existsSync(`.agility-files/${folder}`)){
-        fs.mkdirSync(`.agility-files/${folder}`);
+      if(!fs.existsSync(`agility-files/${folder}`)){
+        fs.mkdirSync(`agility-files/${folder}`);
       }
 
-      let fileName =  `.agility-files/${folder}/${fileIdentifier}.json`;
+      let fileName =  `agility-files/${folder}/${fileIdentifier}.json`;
       fs.appendFileSync(fileName,JSON.stringify(extractedObject));
     }
 
     createLogFile(folder: string, fileIdentifier: any, baseFolder?: string){
       if(baseFolder === undefined || baseFolder === ''){
-        baseFolder = `.agility-files`;
+        baseFolder = `agility-files`;
+      }
+      if(!fs.existsSync(`${baseFolder}`)){
+        fs.mkdirSync(`${baseFolder}`);
       }
       if(!fs.existsSync(`${baseFolder}/${folder}`)){
           fs.mkdirSync(`${baseFolder}/${folder}`);
@@ -38,19 +41,28 @@ export class fileOperations{
     }
 
     appendLogFile(data: string){
-      let fileName =  `.agility-files/logs/instancelog.txt`;
+      let fileName =  `agility-files/logs/instancelog.txt`;
+
+      if(!fs.existsSync(`agility-files`)){  
+        fs.mkdirSync(`agility-files`);
+      }
+
+      if(!fs.existsSync(`agility-files/logs`)){
+        fs.mkdirSync(`agility-files/logs`);
+      }
+
       fs.appendFileSync(fileName, data);
     }
 
     createFolder(folder: string){
-      if(!fs.existsSync(`.agility-files/${folder}`)){
-        fs.mkdirSync(`.agility-files/${folder}`, { recursive: true });
+      if(!fs.existsSync(`agility-files/${folder}`)){
+        fs.mkdirSync(`agility-files/${folder}`, { recursive: true });
       }
     }
 
     createBaseFolder(folder?: string){
       if(folder === undefined || folder === ''){
-        folder = `.agility-files`;
+        folder = `agility-files`;
       }
       if(!fs.existsSync(folder)){
         fs.mkdirSync(folder);
@@ -145,7 +157,7 @@ export class fileOperations{
 
   readDirectory(folderName: string, baseFolder?: string){
     if(baseFolder === undefined || baseFolder === ''){
-      baseFolder = '.agility-files';
+      baseFolder = 'agility-files';
     }
     let directory = `${baseFolder}/${folderName}`;
     let files : string[] = [];
@@ -159,7 +171,7 @@ export class fileOperations{
 
   folderExists(folderName: string, baseFolder?: string){
     if(baseFolder === undefined || baseFolder === ''){
-      baseFolder = '.agility-files';
+      baseFolder = 'agility-files';
     }
     let directory = `${baseFolder}/${folderName}`;
     if(fs.existsSync(directory)){
@@ -222,7 +234,7 @@ export class fileOperations{
   }
 
   cliFolderExists(){
-    if(fs.existsSync('.agility-files')){
+    if(fs.existsSync('agility-files')){
       return true;
     } else{
       return false;

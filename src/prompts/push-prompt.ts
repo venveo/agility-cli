@@ -1,7 +1,7 @@
 import inquirer from "inquirer";
 import fuzzy from "fuzzy";
 import colors from "ansi-colors";
-import { instanceSelector } from "./instances/selector";
+import { instanceSelector } from "./instances/instance-list";
 import { homePrompt } from "./home-prompt";
 import { Auth } from "../auth";
 import { model } from "../model";
@@ -44,21 +44,13 @@ export async function pushFiles(instance: any) {
   if (codeFileStatus) {
     let agilityFolder = code.cliFolderExists();
     if (agilityFolder) {
-      let data = JSON.parse(code.readTempFile("code.json"));
 
       let multibar = createMultibar({ name: "Push" });
 
-      const form = new FormData();
-      form.append("cliCode", data.code);
 
-      let token = await auth.cliPoll(form, guid);
-
-      options = new mgmtApi.Options();
-      options.token = token.access_token;
-
-      let user = await auth.getUser(guid, token.access_token);
+      let user = await auth.getUser(guid);
       if (user) {
-        let permitted = await auth.checkUserRole(guid, token.access_token);
+        let permitted = await auth.checkUserRole(guid);
         if (permitted) {
           console.log(colors.yellow("Pushing your instance..."));
           let push = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview);
@@ -92,66 +84,66 @@ export async function pushFiles(instance: any) {
 }
 
 
-export async function syncFiles(instance: any) {
-    const { guid, websiteName } = instance;
+// export async function syncFiles(instance: any) {
+//     const { guid, websiteName } = instance;
   
-    const selectedInstance:AgilityInstance = await instanceSelector();
-    const locale = await localePrompt(selectedInstance);
-    const channel = await channelPrompt();
-    const preview = await isPreviewPrompt();
+//     const selectedInstance:AgilityInstance = await instanceSelector();
+//     const locale = await localePrompt(selectedInstance);
+//     const channel = await channelPrompt();
+//     const preview = await isPreviewPrompt();
   
-    let code = new fileOperations();
-    auth = new Auth();
-    let codeFileStatus = code.codeFileExists();
+//     let code = new fileOperations();
+//     auth = new Auth();
+//     let codeFileStatus = code.codeFileExists();
   
-    if (codeFileStatus) {
-      let agilityFolder = code.cliFolderExists();
-      if (agilityFolder) {
-        let data = JSON.parse(code.readTempFile("code.json"));
+//     if (codeFileStatus) {
+//       let agilityFolder = code.cliFolderExists();
+//       if (agilityFolder) {
+//         let data = JSON.parse(code.readTempFile("code.json"));
   
-        let multibar = createMultibar({ name: "Push" });
+//         let multibar = createMultibar({ name: "Push" });
   
-        const form = new FormData();
-        form.append("cliCode", data.code);
+//         const form = new FormData();
+//         form.append("cliCode", data.code);
   
-        let token = await auth.cliPoll(form, guid);
+//         let token = await auth.cliPoll(form, guid);
   
-        options = new mgmtApi.Options();
-        options.token = token.access_token;
+//         options = new mgmtApi.Options();
+//         options.token = token.access_token;
   
-        let user = await auth.getUser(guid, token.access_token);
-        if (user) {
-          let permitted = await auth.checkUserRole(guid, token.access_token);
-          if (permitted) {
-            console.log(colors.yellow("Pushing your instance..."));
-            let pushSync = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview);
+//         let user = await auth.getUser(guid);
+//         if (user) {
+//           let permitted = await auth.checkUserRole(guid);
+//           if (permitted) {
+//             console.log(colors.yellow("Pushing your instance..."));
+//             let pushSync = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview);
           
-            // pushSync.syncInstance();
+//             // pushSync.syncInstance();
           
           
-          } else {
-            console.log(
-              colors.red(
-                "You do not have required permissions on the instance to perform the push operation."
-              )
-            );
-          }
-        } else {
-          console.log(
-            colors.red("Please authenticate first to perform the push operation.")
-          );
-        }
-      } else {
-        console.log(
-          colors.red("Please pull an instance first to push an instance.")
-        );
-      }
-    } else {
-      console.log(
-        colors.red("Please authenticate first to perform the push operation.")
-      );
-    }
-  }
+//           } else {
+//             console.log(
+//               colors.red(
+//                 "You do not have required permissions on the instance to perform the push operation."
+//               )
+//             );
+//           }
+//         } else {
+//           console.log(
+//             colors.red("Please authenticate first to perform the push operation.")
+//           );
+//         }
+//       } else {
+//         console.log(
+//           colors.red("Please pull an instance first to push an instance.")
+//         );
+//       }
+//     } else {
+//       console.log(
+//         colors.red("Please authenticate first to perform the push operation.")
+//       );
+//     }
+//   }
 
 async function pullPrompt(guid: string) {
   const instanceOptions = await inquirer.prompt([

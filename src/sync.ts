@@ -39,7 +39,7 @@ export class sync{
 
      async getPageTemplates(baseFolder?: string){
       if(baseFolder === undefined || baseFolder === ''){
-         baseFolder = '.agility-files';
+         baseFolder = 'agility-files';
       }
       let apiClient = new mgmtApi.ApiClient(this._options);
       try{
