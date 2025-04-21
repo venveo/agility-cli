@@ -1,130 +1,164 @@
-import * as agilitySync from '@agility/content-sync';
-import * as mgmtApi  from '@agility/management-sdk';
-import { fileOperations } from './fileOperations';
-import * as cliProgress from 'cli-progress';
-const fs = require('fs');
-const path = require('path');
+import * as agilitySync from "@agility/content-sync";
+import * as mgmtApi from "@agility/management-sdk";
+import { fileOperations } from "./fileOperations";
+import * as cliProgress from "cli-progress";
+const fs = require("fs");
+const path = require("path");
+const storeInterfaceFileSystem = require("./store-interface-filesystem");
 
+export class syncNew {
+  _guid: string;
+  _apiKey: string;
+  _locale: string;
+  _channel: string;
+  _options: mgmtApi.Options;
+  _multibar: cliProgress.MultiBar;
+  _isPreview: boolean;
 
-export class syncNew{
-     _guid: string;
-     _apiKey: string;
-     _locale: string;
-     _channel: string;
-     _options : mgmtApi.Options;
-     _multibar: cliProgress.MultiBar;
-     _isPreview: boolean;
+  constructor(
+    guid: string,
+    apiKey: string,
+    locale: string,
+    channel: string,
+    options: mgmtApi.Options,
+    multibar: cliProgress.MultiBar,
+    isPreview: boolean
+  ) {
+    this._guid = guid;
+    this._apiKey = apiKey;
+    this._locale = locale;
+    this._channel = channel;
+    this._options = options;
+    this._multibar = multibar;
+    this._isPreview = isPreview;
+  }
 
-     constructor(guid: string, apiKey: string, locale: string, channel: string, options: mgmtApi.Options, multibar: cliProgress.MultiBar, isPreview: boolean){
-        this._guid = guid;
-        this._apiKey = apiKey;
-        this._locale = locale;
-        this._channel = channel;
-        this._options = options;
-        this._multibar = multibar;
-        this._isPreview = isPreview;
-     }
+  async sync(guid: string, locale: string, isPreview: boolean = true) {
+    this._guid = guid;
+    this._isPreview = isPreview;
+    this._locale = locale;
 
-   async sync(guid: string, locale: string, isPreview: boolean = true){
-      
-      this._guid = guid;
-      this._isPreview = isPreview;
-      this._locale = locale;
+    let syncClient = agilitySync.getSyncClient({
+      guid: this._guid,
+      apiKey: this._apiKey,
+      languages: [`${this._locale}`],
+      channels: [`${this._channel}`],
+      isPreview: this._isPreview,
+      store: {
+        interface: storeInterfaceFileSystem,
+        options: {
+          rootPath: `agility-files/${this._guid}/${this._locale}/${this._isPreview ? "preview" : "live"}`,
+        },
+      },
+    });
 
-      let syncClient = agilitySync.getSyncClient({
-        guid: this._guid,
-        apiKey: this._apiKey,
-        languages: [`${this._locale}`],
-        channels: [`${this._channel}`],
-        isPreview: this._isPreview
-      })
+    const sync = await syncClient.runSync();
 
-      const sync = await syncClient.runSync();
+    await this.getPages();
+    await this.getPageTemplates();
+  }
 
-      // we need to move these files to the correct location
-      const sourceDir = path.join('agility-files', this._guid, this._locale, this._isPreview ? 'preview':'live');
-      const destDir = path.join(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}`);
+  async getPageTemplates(baseFolder?: string) {
+    if (baseFolder === undefined || baseFolder === "") {
+      baseFolder = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? "preview" : "live"}`;
+    }
+    let apiClient = new mgmtApi.ApiClient(this._options);
+    try {
+      let pageTemplates = await apiClient.pageMethods.getPageTemplates(this._guid, this._locale, true);
 
-      if (!fs.existsSync(destDir)) {
-         fs.mkdirSync(destDir, { recursive: true });
+      const progressBar0 = this._multibar.create(pageTemplates.length, 0);
+      progressBar0.update(0, { name: "Templates" });
+      let index = 1;
+
+      let fileExport = new fileOperations();
+
+      for (let i = 0; i < pageTemplates.length; i++) {
+        let template = pageTemplates[i];
+        progressBar0.update(index);
+        index += 1;
+        fileExport.exportFiles(`templates`, template.pageTemplateID, template, baseFolder);
       }
+    } catch {}
+  }
 
-      // move the sync files to the correct location
-      fs.readdirSync(sourceDir).forEach(file => {
+  async getPages() {
+    let apiClient = new mgmtApi.ApiClient(this._options);
 
-         const sourceFile = path.join(sourceDir, file);
-         const destFile = path.join(destDir, file);
-         if (fs.lstatSync(sourceFile).isDirectory()) {
-         fs.mkdirSync(destFile, { recursive: true });
-         fs.readdirSync(sourceFile).forEach(subFile => {
-            fs.renameSync(path.join(sourceFile, subFile), path.join(destFile, subFile));
-         });
-         } else {
-         fs.renameSync(sourceFile, destFile);
-         }
-      });
+    let fileOperation = new fileOperations();
+    if (fileOperation.folderExists(`${this._guid}/${this._locale}/${this._isPreview ? "preview" : "live"}/page`)) {
+      let files = fileOperation.readDirectory(
+        `${this._guid}/${this._locale}/${this._isPreview ? "preview" : "live"}/page`
+      );
 
-      // remove the agility-files/{locale} folder
-      await fs.rmSync(sourceDir, { recursive: true, force: true });
+      const progressBar01 = this._multibar.create(files.length, 0);
+      progressBar01.update(0, { name: "Pages" });
+      let index = 1;
 
+      for (let i = 0; i < files.length; i++) {
+        let pageItem = JSON.parse(files[i]) as mgmtApi.PageItem;
 
-      await this.getPageTemplates();
+        progressBar01.update(index);
+        index += 1;
 
-      await this.getPages();
-   }
+        try {
+          let page = await apiClient.pageMethods.getPage(pageItem.pageID, this._guid, this._locale);
 
-     async getPageTemplates(baseFolder?: string){
-      if(baseFolder === undefined || baseFolder === ''){
-         baseFolder = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview' : 'live'}`;
+          fileOperation.exportFiles(
+            `${this._guid}/${this._locale}/${this._isPreview ? "preview" : "live"}/pages`,
+            page.pageID,
+            page
+          );
+        } catch {}
       }
-      let apiClient = new mgmtApi.ApiClient(this._options);
-      try{
-         let pageTemplates = await apiClient.pageMethods.getPageTemplates(this._guid, this._locale, true);
+    }
+  }
 
-         const progressBar0 = this._multibar.create(pageTemplates.length, 0);
-         progressBar0.update(0, {name : 'Templates'});
-         let index = 1;
+  async pullFiles(guid: string, locale: string, isPreview: boolean = true) {
+    let syncClient = agilitySync.getSyncClient({
+      guid: guid,
+      apiKey: this._apiKey,
+      languages: [`${locale}`],
+      channels: [`${this._channel}`],
+      isPreview: isPreview,
+      store: {
+        interface: storeInterfaceFileSystem,
+        options: {
+          rootPath: `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}`,
+        },
+      },
+    });
 
-         let fileExport = new fileOperations();
+    const sync = await syncClient.runSync();
+    console.log(sync);
 
-         for(let i = 0; i < pageTemplates.length; i++){
-            let template = pageTemplates[i];
-            progressBar0.update(index);
-            index += 1;
-            fileExport.exportFiles(`templates`, template.pageTemplateID, template, baseFolder);
-         }
-      } catch{
+    // we need to move these files to the correct location
+    const sourceDir = path.join("agility-files", guid, locale, isPreview ? "preview" : "live");
+    const destDir = path.join(`agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}`);
 
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    // move the sync files to the correct location
+    fs.readdirSync(sourceDir).forEach((file) => {
+      const sourceFile = path.join(sourceDir, file);
+      const destFile = path.join(destDir, file);
+      if (fs.lstatSync(sourceFile).isDirectory()) {
+        fs.mkdirSync(destFile, { recursive: true });
+        fs.readdirSync(sourceFile).forEach((subFile) => {
+          fs.renameSync(path.join(sourceFile, subFile), path.join(destFile, subFile));
+        });
+      } else {
+        fs.renameSync(sourceFile, destFile);
       }
-      
-     }
+    });
 
-     async getPages(){
-      let apiClient = new mgmtApi.ApiClient(this._options);
+    // remove the agility-files/{locale} folder
+    await fs.rmSync(sourceDir, { recursive: true, force: true });
 
-      let fileOperation = new fileOperations();
-      if(fileOperation.folderExists(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/page`)){
-         let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/page`);
+    await this.getPageTemplates();
+    await this.getPages();
 
-         const progressBar01 = this._multibar.create(files.length, 0);
-         progressBar01.update(0, {name : 'Pages'});
-         let index = 1;
-
-         for(let i = 0; i < files.length; i++){
-            let pageItem = JSON.parse(files[i]) as mgmtApi.PageItem;
-
-            progressBar01.update(index);
-            index += 1;
-
-            try{
-               let page = await apiClient.pageMethods.getPage(pageItem.pageID, this._guid, this._locale);
-
-               fileOperation.exportFiles(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/pages`, page.pageID, page);
-            } catch{
-
-            }
-         }
-      }
-      
-     }
+    return true;
+  }
 }

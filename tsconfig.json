@@ -9,8 +9,13 @@
 		"lib": ["es2016", "dom"],
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"allowSyntheticDefaultImports": true
+		"allowSyntheticDefaultImports": true,
+		"baseUrl": ".",
+		"paths": {
+			"*": ["src/*"]
+		}
 	},
+	"include": ["src/**/*"],
 	// "exclude": [
 	// 	"src/prompts/utilities/agility-models.ts"
 	// ]

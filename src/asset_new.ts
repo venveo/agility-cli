@@ -112,14 +112,15 @@ export class assetNew {
     );
 
     let totalRecords = initialRecords.totalCount;
-    fileExport.createFolder(
-      `${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/json`
-    );
-    fileExport.createFolder(
-      `${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/failedAssets`
-    );
+    
+    // Create the base directory structure
+    const basePath = `${guid}/${locale}/${isPreview ? "preview" : "live"}`;
+    
+    // Create the deepest directory we need - this will create all parent directories
+    fileExport.createFolder(`${basePath}/assets/galleries`);
+    
     fileExport.exportFiles(
-      `${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/json`,
+      `${basePath}/assets/json`,
       index,
       initialRecords
     );
@@ -152,30 +153,25 @@ export class assetNew {
       }
 
       if (folderPath) {
-        fileExport.createFolder(
-          `${guid}/${locale}/${
-            isPreview ? "preview" : "live"
-          }/assets/${folderPath}`
-        );
+        const fullFolderPath = `${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/${folderPath}`;
+        fileExport.createFolder(fullFolderPath);
         try {
           await fileExport.downloadFile(
             originUrl,
-            `agility-files/${guid}/${locale}/${
-              isPreview ? "preview" : "live"
-            }/assets/${folderPath}/${fileName}`
+            `agility-files/${fullFolderPath}/${fileName}`
           );
         } catch {
+          console.log('Failed to download file', originUrl);
           this.unProcessedAssets[assetMediaID] = fileName;
         }
       } else {
         try {
           await fileExport.downloadFile(
             originUrl,
-            `agility-files/${guid}/${locale}/${
-              isPreview ? "preview" : "live"
-            }/assets/${fileName}`
+            `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/${fileName}`
           );
         } catch {
+          console.log('Failed to download file', originUrl);
           this.unProcessedAssets[assetMediaID] = fileName;
         }
       }

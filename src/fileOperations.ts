@@ -5,16 +5,24 @@ os.tmpDir = os.tmpdir;
 
 export class fileOperations{
 
-    exportFiles(folder: string, fileIdentifier: any, extractedObject: any, baseFolder?: string){
-      if(baseFolder === undefined || baseFolder === ''){
-             baseFolder = 'agility-files';
+    exportFiles(folder: string, fileIdentifier: any, extractedObject: any, baseFolder?: string) {
+        if (baseFolder === undefined || baseFolder === '') {
+            baseFolder = 'agility-files';
         }
-        if(!fs.existsSync(`${baseFolder}/${folder}`)){
-            fs.mkdirSync(`${baseFolder}/${folder}`);
+        
+        // Create the full directory path
+        const fullPath = `${baseFolder}/${folder}`;
+        const path = require('path');
+        const normalizedPath = path.normalize(fullPath);
+        
+        // Create the directory structure
+        if (!fs.existsSync(normalizedPath)) {
+            // console.log(`Creating directory for export: ${normalizedPath}`);
+            fs.mkdirSync(normalizedPath, { recursive: true });
         }
-        let fileName =  `${baseFolder}/${folder}/${fileIdentifier}.json`;
-        fs.writeFileSync(fileName,JSON.stringify(extractedObject));
-      
+        
+        let fileName = `${normalizedPath}/${fileIdentifier}.json`;
+        fs.writeFileSync(fileName, JSON.stringify(extractedObject));
     }
 
     appendFiles(folder: string, fileIdentifier: any, extractedObject: any){
@@ -53,11 +61,47 @@ export class fileOperations{
 
       fs.appendFileSync(fileName, data);
     }
-
-    createFolder(folder: string){
-      if(!fs.existsSync(`agility-files/${folder}`)){
-        fs.mkdirSync(`agility-files/${folder}`, { recursive: true });
-      }
+    
+    createFolder(folder: string): boolean {
+        try {
+            const path = require('path');
+            const fullPath = path.join('agility-files', folder);
+            
+            // Normalize the path and split into segments
+            const normalizedPath = path.normalize(fullPath);
+            const segments = normalizedPath.split(path.sep);
+            
+            // Start from the root and create each directory
+            let currentPath = '';
+            for (const segment of segments) {
+                currentPath = path.join(currentPath, segment);
+                
+                // Skip empty segments
+                if (!segment) continue;
+                
+                try {
+                    if (!fs.existsSync(currentPath)) {
+                        // console.log(`Creating directory: ${currentPath}`);
+                        fs.mkdirSync(currentPath);
+                    }
+                } catch (err) {
+                    console.error(`Error creating directory ${currentPath}:`, err);
+                    return false;
+                }
+            }
+            
+            // Verify the final directory exists
+            if (fs.existsSync(normalizedPath)) {
+                // console.log(`Successfully created directory structure: ${normalizedPath}`);
+                return true;
+            } else {
+                // console.error(`Failed to create directory structure: ${normalizedPath}`);
+                return false;
+            }
+        } catch (error) {
+            console.error('Error in createFolder:', error);
+            return false;
+        }
     }
 
     createBaseFolder(folder?: string){
@@ -76,35 +120,48 @@ export class fileOperations{
       return true;
     }
 
-    async downloadFile (url: string, targetFile: string) {  
+    async downloadFile(url: string, targetFile: string) {  
         return await new Promise((resolve, reject) => {
-          Https.get(url, response => {
-            const code = response.statusCode ?? 0
-      
-            if (code >= 400) {
-               return reject(new Error(response.statusMessage))
+            // Ensure the target directory exists
+            const path = require('path');
+            const targetDir = path.dirname(targetFile);
+            
+            if (!fs.existsSync(targetDir)) {
+                fs.mkdirSync(targetDir, { recursive: true });
             }
-      
-            if (code > 300 && code < 400 && !!response.headers.location) {
-              return resolve(
-                this.downloadFile(response.headers.location, targetFile)
-              )
-            }
-      
-            const fileWriter = fs
-              .createWriteStream(targetFile)
-              .on('finish', () => {
-                resolve({})
-              })
-      
-            response.pipe(fileWriter)
-          }).on('error', error => {
-            reject(error)
-          })
-        })
-      }
 
-      createFile(filename:string, content: string) {
+            Https.get(url, response => {
+                const code = response.statusCode ?? 0;
+        
+                if (code >= 400) {
+                    return reject(new Error(response.statusMessage));
+                }
+        
+                if (code > 300 && code < 400 && !!response.headers.location) {
+                    return resolve(
+                        this.downloadFile(response.headers.location, targetFile)
+                    );
+                }
+        
+                const fileWriter = fs
+                    .createWriteStream(targetFile)
+                    .on('finish', () => {
+                        resolve({});
+                    })
+                    .on('error', (err) => {
+                        // console.error(`Error writing file ${targetFile}:`, err);
+                        reject(err);
+                    });
+        
+                response.pipe(fileWriter);
+            }).on('error', error => {
+                console.error(`Error downloading from ${url}:`, error);
+                reject(error);
+            });
+        });
+    }
+
+    createFile(filename:string, content: string) {
         fs.writeFileSync(filename, content);
     }
 

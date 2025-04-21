@@ -23,6 +23,8 @@ import { containerNew } from "../container_new";
 import { assetNew } from "../asset_new";
 import { modelNew } from "../model_new";
 import { AgilityInstance } from "../types/instance";
+import * as fs from 'fs';
+import { promises as fsPromises } from 'fs';
 
 inquirer.registerPrompt('fuzzypath', require('inquirer-fuzzy-path'))
 
@@ -33,31 +35,25 @@ let options: mgmtApi.Options;
 
 
 export async function pullFiles(selectedInstance: AgilityInstance) {
-    
+    const code = new fileOperations();
     const { guid } = selectedInstance;
+    const baseUrl = await getBaseURLfromGUID(guid);
 
     const locale = await localePrompt(selectedInstance);
     const channel = await channelPrompt();
     const preview = await isPreviewPrompt();
-    const baseUrl = await getBaseURLfromGUID(guid);
     const elements:any = await elementsPrompt();
-    
-    downloadFiles(guid, locale, channel, baseUrl, preview, elements);
+
+  
+    return downloadFiles(guid, locale, channel, baseUrl, preview, elements);
 }
 
 
 async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any, elements: any) {
     auth = new Auth();
     let code = new fileOperations();
-        code.cleanup(`agility-files/${guid}/${isPreview ? "preview" : "live"}`); 
-
-        // let data = JSON.parse(code.readTempFile('code.json'));
-
-        // const form = new FormData();
-        // form.append('cliCode', data.code);
         
         let userBaseUrl: string = baseUrl as string;
-        // let token = await auth.cliPoll(form, guid);
         let multibar = createMultibar({name: 'Pull'});
 
         options = new mgmtApi.Options();
@@ -66,6 +62,20 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
 
         let user = await auth.getUser(guid);
 
+        const fullPath = `agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`;
+        
+        try {
+            if (!fs.existsSync('agility-files')) {
+                await fsPromises.mkdir('agility-files');
+            }
+            
+            await fsPromises.mkdir(fullPath, { recursive: true });
+            
+        } catch (error) {
+            console.error('Error creating directories:', error);
+            throw error;
+        }
+        
         if(user){
             let permitted = await auth.checkUserRole(guid);
             if(permitted){
@@ -76,9 +86,7 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                 let fetchKey = await auth.getFetchKey(guid, userBaseUrl ? userBaseUrl : base)
                 let syncKey = isPreview ? previewKey : fetchKey;
 
-                // we need to make sure the base folder exists for this pull request
-                code.createFolder(`/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`);
-      
+
                 if(syncKey){
                     console.log(colors.yellow(`\n Downloading your instance to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
 
@@ -115,7 +123,8 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                     multibar.stop()
                     // await new Promise(resolve => setTimeout(resolve, 500));
                     console.log(colors.green('\n✅ Download complete!\n'));
-                    homePrompt();
+                    
+                    return true;
 
 
                 }

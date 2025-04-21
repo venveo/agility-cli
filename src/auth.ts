@@ -4,8 +4,11 @@ import { fileOperations } from "./fileOperations";
 import { serverUser } from "./types/serverUser";
 import { WebsiteUser } from "./types/websiteUser";
 import { forceDevMode, forceLocalMode } from ".";
+import { AgilityInstance } from "./types/instance";
 const open = require("open");
 const FormData = require("form-data");
+import fs from 'fs';
+import path from 'path';
 
 import keytar from "keytar";
 import { exit } from "process";
@@ -24,6 +27,27 @@ function logReplace(text) {
 export class Auth {
   getEnv(): "dev" | "local" | "prod" {
     return forceDevMode ? "dev" : forceLocalMode ? "local" : "prod";
+  }
+
+  checkForEnvFile(): { hasEnvFile: boolean; guid?: string } {
+    const envFiles = ['.env', '.env.local', '.env.development', '.env.production'];
+    const result: { hasEnvFile: boolean; guid?: string } = { hasEnvFile: false };
+
+    for (const envFile of envFiles) {
+      const envPath = path.join(process.cwd(), envFile);
+      if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        const guidMatch = envContent.match(/AGILITY_GUID=([^\n]+)/);
+        
+        if (guidMatch && guidMatch[1]) {
+          result.hasEnvFile = true;
+          result.guid = guidMatch[1].trim();
+          return result;
+        }
+      }
+    }
+
+    return result;
   }
 
   getEnvKey(env: string): string {
@@ -160,7 +184,6 @@ export class Auth {
 
           if (Date.now() < expiresAt) {
             logReplace(ansiColors.green(`\r● Authenticated to ${env === 'prod' ? 'Agility': env} servers.\n`));
-            console.log("----------------------------------\n");
             return true;
           } else {
             console.log("Existing token has expired. Starting re-authentication...");

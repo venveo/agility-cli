@@ -46,7 +46,10 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
 
   switch (answers.instanceAction) {
     case "pull":
-      pullFiles(selectedInstance);
+      const pullResult = await pullFiles(selectedInstance);
+      if (pullResult) {
+        homePrompt();
+      }
       break;
     case "push":
       pushFiles(selectedInstance);

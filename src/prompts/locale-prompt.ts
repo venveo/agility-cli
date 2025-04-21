@@ -10,8 +10,6 @@ let auth: Auth;
 export async function localePrompt(selectedInstance:AgilityInstance) {
 
     auth = new Auth();
-   
-   
     let guid: string = selectedInstance.guid;
    
     let options = new mgmtApi.Options();
@@ -43,7 +41,8 @@ export async function localePrompt(selectedInstance:AgilityInstance) {
     return answers.locales;
 
     } catch (error) {
-        console.error("Error fetching locales:", error);
+        // console.error("Error fetching locales:", error);
+        
         return null;
     }
 }

@@ -20,8 +20,11 @@ import { modelSync } from "./modelSync";
 import { FilterData, ModelFilter } from "./types/modelFilter";
 import { create } from "domain";
 import { homePrompt } from "./prompts/home-prompt";
+import { generateEnv } from "./prompts/utilities/generate-env";
 import { exit } from "process";
 import ansiColors from "ansi-colors";
+import { instancesPrompt } from "./prompts/instance-prompt";
+import { AgilityInstance } from "./types/instance";
 
 let auth: Auth;
 export let forceDevMode: boolean = false;
@@ -58,9 +61,59 @@ yargs.command({
     }
 
     const isAuthorized = await auth.checkAuthorization();
-    if(isAuthorized){
-      homePrompt();
+    if(!isAuthorized) {
       return;
+    }
+
+
+ 
+
+    // Only run homePrompt if no other commands are specified
+    if (process.argv.length <= 2) {
+      const envCheck = auth.checkForEnvFile();
+    
+     
+      if (envCheck.hasEnvFile && envCheck.guid) {
+
+
+        let user = await auth.getUser(envCheck.guid);
+
+        let currentWebsite = user.websiteAccess.find((website: any) => website.guid === envCheck.guid);
+
+
+        // If we found a GUID in an env file, we can go right to instancePrompt
+        const instance: AgilityInstance = {
+          guid: envCheck.guid,
+          previewKey: '',
+          fetchKey: '',
+          websiteDetails: {
+            orgCode: '',
+            orgName: '',
+            websiteName: '',
+            websiteNameStripped: '',
+            displayName: currentWebsite.displayName,
+            guid: envCheck.guid,
+            websiteID: 0,
+            isCurrent: false,
+            managerUrl: '',
+            version: '',
+            isOwner: false,
+            isDormant: false,
+            isRestoring: false,
+            teamID: null
+          }
+        };
+
+        // const { guid, websiteName, displayName } = website;
+        console.log('------------------------------------------------');
+        console.log(colors.green('●'), colors.green(`${currentWebsite.displayName}`), colors.white(`${instance.guid}`));
+        console.log('------------------------------------------------');
+      
+        await instancesPrompt(instance, null);
+      } else {
+        // If no env file or no GUID found, go to homePrompt
+        homePrompt();
+      }
     }
   },
 });
@@ -89,6 +142,27 @@ yargs.command({
     await auth.logout();
   },
 });
+
+yargs.command({
+    command: "genenv",
+    describe: "Generate an env file for your instance.",
+    
+    handler: async function (argv) {
+        let auth = new Auth();
+        const isAuthorized = await auth.checkAuthorization();
+        if(isAuthorized){
+            const result = await generateEnv();
+            if(result){
+                process.exit(0);
+            }
+        } 
+        else {
+            console.log(colors.red("You are not authorized to generate an env file."));
+            return;
+        }
+    },
+});
+    
   
 yargs.command({
   command: 'sync-models',
