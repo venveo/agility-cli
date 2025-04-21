@@ -28,7 +28,6 @@ const saveItem = async ({ options, item, itemType, languageCode, itemID }) => {
 
 	try {
 		if (!fs.existsSync(dirPath)) {
-			console.log('Creating directory:', dirPath);
 			fs.mkdirSync(dirPath, { recursive: true });
 			
 			if (!fs.existsSync(dirPath)) {

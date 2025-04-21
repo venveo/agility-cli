@@ -1,0 +1,36 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Settings
+
+This is a CLI project for interacting with Agility CMS via Management and Sync APIs / SDKs.
+
+## Project Status
+
+We are currently modernizing the codebase to use inquirer prompts to provide a better visual experience to developers. I have written extensive code on top of the existing layer of the CLI however we now need to ensure the old base commands found in `src/index.ts` can utilize the new file and folder structure of the updated prompt driven layer functionality. 
+
+## Agiliy Files
+
+This project writes instance files to the users local directory, wherever they are using the cli. It creates a folder structure as follows
+
+`/agility-files/{guid}/{locale}/${isPreview ? 'preview':'live'}` and can contain multiple GUID folders.
+
+## Previous Implementation
+
+We want to update any previous implementations of the file paths, if we can utilize the functions in the new versions of the file, we shuld opt to migrate to that usage. 
+
+## Conventions
+
+- All code must be strongly typed.
+- Do not allow `any` in TypeScript interfaces.
+- Always search for existing type interfaces before creating new ones
+- Do not re-write strongly typed interfaces without explicity asking first and waiting for a reply, this is generatly not a good idea anyways
+- Always prefer `async generators` for long-running processes (like sync).
+- Token storage must use `keytar`, not file-based systems.
+
+## Planning, Tracking and Execution 
+- Plan, track and execution all phases, tasks and courses of action in `manifest.md` before doing any work on the codebase. 
+- Loop through these and update your completion as you go, if we get interupted using the prompt `resume generating` should begin where it last left off.
+

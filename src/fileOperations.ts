@@ -17,7 +17,6 @@ export class fileOperations{
         
         // Create the directory structure
         if (!fs.existsSync(normalizedPath)) {
-            // console.log(`Creating directory for export: ${normalizedPath}`);
             fs.mkdirSync(normalizedPath, { recursive: true });
         }
         
@@ -81,7 +80,6 @@ export class fileOperations{
                 
                 try {
                     if (!fs.existsSync(currentPath)) {
-                        // console.log(`Creating directory: ${currentPath}`);
                         fs.mkdirSync(currentPath);
                     }
                 } catch (err) {

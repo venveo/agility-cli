@@ -88,7 +88,7 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
 
 
                 if(syncKey){
-                    console.log(colors.yellow(`\n Downloading your instance to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
+                    console.log(colors.yellow(`\nDownloading your instance to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
 
                     let contentPageSync = new syncNew(guid, syncKey, locale, channel, options, multibar, isPreview);
                     let assetsSync = new assetNew(options, multibar);
@@ -105,7 +105,7 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                         syncTasks.push(modelSync.getModels(guid, locale, isPreview));
                     }
 
-                    if(elements.includes('Content Lists')){
+                    if(elements.includes('Content')){
                         syncTasks.push(containerSync.getContainers(guid, locale, isPreview));
                     }
 

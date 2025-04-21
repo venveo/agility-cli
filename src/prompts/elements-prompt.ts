@@ -6,7 +6,7 @@ inquirer.registerPrompt('checkbox-plus', require('inquirer-checkbox-plus-prompt'
 
 export async function elementsPrompt() {
 
-    var elements = ['Assets', 'Galleries', 'Models', 'Content Lists', 'Pages'];
+    var elements = ['Assets', 'Galleries', 'Models', 'Content', 'Pages'];
     
     console.log(ansiColors.red(`\n⚠️  It is advised to download the entirity of the instance, partial downloads may result in push issues.\n`));
 
@@ -17,7 +17,7 @@ export async function elementsPrompt() {
             pageSize: 10,
             highlight: true,
             searchable: true,
-            default: ['Assets', 'Galleries', 'Models', 'Content Lists', 'Pages'],
+            default: ['Assets', 'Galleries', 'Models', 'Content', 'Pages'],
             source: function(answersSoFar, input) {
           
               input = input || '';

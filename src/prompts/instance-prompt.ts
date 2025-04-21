@@ -20,6 +20,7 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
     new inquirer.Separator(),
     { name: "Download assets, models & content from an instance", value: "pull" },
     { name: "Push local assets, models & content to an instance", value: "push" },
+    { name: "Sync models to an instance", value: "syncModels" },
     new inquirer.Separator(),
     { name: "Fetch API", value: "fetch" },
     new inquirer.Separator(),
@@ -54,6 +55,16 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
     case "push":
       pushFiles(selectedInstance);
       break;
+    case "syncModels":
+
+
+    console.log('not sure what to do here yet')
+      // const syncModels = await syncModelsPrompt(selectedInstance);
+      // if (syncModels) {
+        // homePrompt();
+      // }
+      break;
+
     case "fetch":
       const fetch = await fetchAPIPrompt(selectedInstance, keys);
       if (fetch) {

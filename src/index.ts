@@ -25,6 +25,11 @@ import { exit } from "process";
 import ansiColors from "ansi-colors";
 import { instancesPrompt } from "./prompts/instance-prompt";
 import { AgilityInstance } from "./types/instance";
+import { websiteListing } from "types/websiteListing";
+import { syncNew } from "./sync_new";
+import { assetNew } from "./asset_new";
+import { containerNew } from "./container_new";
+import { modelNew } from "./model_new";
 
 let auth: Auth;
 export let forceDevMode: boolean = false;
@@ -65,46 +70,22 @@ yargs.command({
       return;
     }
 
-
- 
-
     // Only run homePrompt if no other commands are specified
     if (process.argv.length <= 2) {
       const envCheck = auth.checkForEnvFile();
     
-     
       if (envCheck.hasEnvFile && envCheck.guid) {
 
-
         let user = await auth.getUser(envCheck.guid);
-
-        let currentWebsite = user.websiteAccess.find((website: any) => website.guid === envCheck.guid);
-
-
+        let currentWebsite:websiteListing = user.websiteAccess.find((website: websiteListing) => website.guid === envCheck.guid);
         // If we found a GUID in an env file, we can go right to instancePrompt
         const instance: AgilityInstance = {
           guid: envCheck.guid,
           previewKey: '',
           fetchKey: '',
-          websiteDetails: {
-            orgCode: '',
-            orgName: '',
-            websiteName: '',
-            websiteNameStripped: '',
-            displayName: currentWebsite.displayName,
-            guid: envCheck.guid,
-            websiteID: 0,
-            isCurrent: false,
-            managerUrl: '',
-            version: '',
-            isOwner: false,
-            isDormant: false,
-            isRestoring: false,
-            teamID: null
-          }
+          websiteDetails: currentWebsite
         };
 
-        // const { guid, websiteName, displayName } = website;
         console.log('------------------------------------------------');
         console.log(colors.green('●'), colors.green(`${currentWebsite.displayName}`), colors.white(`${instance.guid}`));
         console.log('------------------------------------------------');
@@ -449,59 +430,100 @@ yargs.command({
           describe: 'Specify the base url of your instance.',
           demandOption: false,
           type: 'string'
+      },
+      preview: {
+          describe: 'Whether to pull from preview or live environment',
+          demandOption: false,
+          type: 'boolean',
+          default: true
+      },
+      elements: {
+          describe: 'Comma-separated list of elements to pull (Pages,Models,Content,Assets,Galleries)',
+          demandOption: false,
+          type: 'string',
+          default: 'Pages,Models,Content,Assets,Galleries'
       }
   },
   handler: async function(argv) {
-      auth = new Auth();
+      let auth = new Auth();
+      const isAuthorized = await auth.checkAuthorization();
+      if(!isAuthorized) {
+          return;
+      }
+
+      // Get token and set up options
+      const token = await auth.getToken();
+      options = new mgmtApi.Options();
+      options.token = token;
+
       let code = new fileOperations();
-      let codeFileStatus = code.codeFileExists();
-      if(codeFileStatus){
-          code.cleanup('agility-files');          
-          
-          let guid: string = argv.guid as string;
-          let locale: string = argv.locale as string;
-          let channel: string = argv.channel as string;
-          let userBaseUrl: string = argv.baseUrl as string;
+      let guid: string = argv.guid as string;
+      let locale: string = argv.locale as string;
+      let channel: string = argv.channel as string;
+      let userBaseUrl: string = argv.baseUrl as string;
+      let isPreview: boolean = argv.preview as boolean;
+      let elements: string[] = (argv.elements as string).split(',');
 
-          let multibar = createMultibar({name: 'Pull'});
+      let multibar = createMultibar({name: 'Pull'});
 
-          let user = await auth.getUser(guid);
+      let user = await auth.getUser(guid);
 
-          if(user){
-              let permitted = await auth.checkUserRole(guid);
-              if(permitted){
-                  let syncKey = await auth.getPreviewKey(guid, userBaseUrl);
-                  if(syncKey){
-                      console.log(colors.yellow('Pulling your instance...'));
-                      let contentPageSync = new sync(guid, syncKey, locale, channel, options, multibar);
-      
-                      await contentPageSync.sync();
-          
-                      let assetsSync = new asset(options, multibar);
-          
-                      await assetsSync.getAssets(guid);
-          
-                      let containerSync = new container(options, multibar);
-          
-                      await containerSync.getContainers(guid);
-          
-                      let modelSync = new model(options, multibar);
-          
-                      await modelSync.getModels(guid);
+      if(user){
+          let permitted = await auth.checkUserRole(guid);
+          if(permitted){
+              const base = auth.determineBaseUrl(guid);
+              let previewKey = await auth.getPreviewKey(guid, userBaseUrl ? userBaseUrl : base);
+              let fetchKey = await auth.getFetchKey(guid, userBaseUrl ? userBaseUrl : base);
+              let syncKey = isPreview ? previewKey : fetchKey;
+
+              if(syncKey){
+                  console.log(colors.yellow(`\nDownloading your instance to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
+
+                  let contentPageSync = new syncNew(guid, syncKey, locale, channel, options, multibar, isPreview);
+                  let assetsSync = new assetNew(options, multibar);
+                  let containerSync = new containerNew(options, multibar);
+                  let modelSync = new modelNew(options, multibar);
+
+                  const syncTasks = [];
+
+                  if(elements.includes('Pages')){
+                      syncTasks.push(contentPageSync.sync(guid, locale, isPreview));
                   }
-                  else{
-                      console.log(colors.red('Either the preview key is not present in your instance or you need to specify the baseUrl parameter as an input based on the location. Please refer the docs for the Base Url.'));
+
+                  if(elements.includes('Models')){
+                      syncTasks.push(modelSync.getModels(guid, locale, isPreview));
                   }
+
+                  if(elements.includes('Content')){
+                      syncTasks.push(containerSync.getContainers(guid, locale, isPreview));
+                  }
+
+                  if(elements.includes('Assets')){
+                      syncTasks.push(assetsSync.getAssets(guid, locale, isPreview));
+                  }
+
+                  if(elements.includes('Galleries')){
+                      syncTasks.push(assetsSync.getGalleries(guid, locale, isPreview));
+                  }
+
+                  const results = await Promise.all(syncTasks);
+                  if(results.some(result => result === false)){
+                    console.log(colors.red('An error occurred during the pull operation. Please check the logs for more information.'));
+                    process.exit(1);
+                  } else {
+                    multibar.stop();
+                    console.log(colors.green('\n✅ Download complete!\n'));
+                    process.exit(0);
+                  }
+                  
               }
               else{
-                  console.log(colors.red('You do not have required permissions on the instance to perform the pull operation.'));
+                  console.log(colors.red('Either the preview key is not present in your instance or you need to specify the baseUrl parameter as an input based on the location. Please refer the docs for the Base Url.'));
               }
-              
           }
           else{
-              console.log(colors.red('Please authenticate first to perform the pull operation.'));
+              console.log(colors.red('You do not have required permissions on the instance to perform the pull operation.'));
           }
-         
       }
       else{
           console.log(colors.red('Please authenticate first to perform the pull operation.'));

@@ -143,7 +143,7 @@ class Clean {
   async cleanContent(mgmt: mgmtApi.ApiClient, multibar: any) {
     const containers: mgmtApi.Container[] = await mgmt.containerMethods.getContainerList(this._guid);
     const progressBar = multibar.create(containers.length, 0);
-    progressBar.update(0, { name: "Deleting Content Lists" });
+    progressBar.update(0, { name: "Deleting Content" });
 
     let content:mgmtApi.ContentItem[] = [];
 
