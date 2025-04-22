@@ -29,19 +29,31 @@ export class Auth {
     return forceDevMode ? "dev" : forceLocalMode ? "local" : "prod";
   }
 
-  checkForEnvFile(): { hasEnvFile: boolean; guid?: string } {
+  checkForEnvFile(): { hasEnvFile: boolean; guid?: string; channel?: string, locales?: string[] } {
     const envFiles = ['.env', '.env.local', '.env.development', '.env.production'];
-    const result: { hasEnvFile: boolean; guid?: string } = { hasEnvFile: false };
+    const result: { hasEnvFile: boolean; guid?: string; channel?: string, locales?: string[] } = { hasEnvFile: false };
 
     for (const envFile of envFiles) {
       const envPath = path.join(process.cwd(), envFile);
       if (fs.existsSync(envPath)) {
         const envContent = fs.readFileSync(envPath, 'utf8');
         const guidMatch = envContent.match(/AGILITY_GUID=([^\n]+)/);
+        const channelMatch = envContent.match(/AGILITY_SITEMAP=([^\n]+)/);
+        const localeMatch = envContent.match(/AGILITY_LOCALES=([^\n]+)/);
         
         if (guidMatch && guidMatch[1]) {
           result.hasEnvFile = true;
           result.guid = guidMatch[1].trim();
+        }
+        if (channelMatch && channelMatch[1]) {
+          result.hasEnvFile = true;
+          result.channel = channelMatch[1].trim();
+        }
+        if (localeMatch && localeMatch[1]) {
+          result.hasEnvFile = true;
+          result.locales = localeMatch[1].trim().split(',');
+        }
+        if (result.hasEnvFile) {
           return result;
         }
       }

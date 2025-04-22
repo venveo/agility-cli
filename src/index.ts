@@ -412,18 +412,18 @@ yargs.command({
   describe: 'Pull your Instance',
   builder: {
       guid: {
-          describe: 'Provide guid to pull your instance.',
-          demandOption: true,
+          describe: 'Provide guid to pull your instance. If not provided, will use AGILITY_GUID from .env file if available.',
+          demandOption: false,
           type: 'string'
       },
       locale: {
-          describe: 'Provide the locale to pull your instance.',
-          demandOption: true,
+          describe: 'Provide the locale to pull your instance. If not provided, will use AGILITY_LOCALES from .env file if available.',
+          demandOption: false,
           type: 'string'
       },
       channel: {
-          describe: 'Provide the channel to pull your instance.',
-          demandOption: true,
+          describe: 'Provide the channel to pull your instance. If not provided, will use AGILITY_SITEMAP from .env file if available.',
+          demandOption: false,
           type: 'string'
       },
       baseUrl: {
@@ -463,6 +463,31 @@ yargs.command({
       let userBaseUrl: string = argv.baseUrl as string;
       let isPreview: boolean = argv.preview as boolean;
       let elements: string[] = (argv.elements as string).split(',');
+
+      // Check for .env file values
+      const envCheck = auth.checkForEnvFile();
+      if (envCheck.hasEnvFile) {
+          if (!guid && envCheck.guid) {
+              guid = envCheck.guid;
+          }
+          if (!channel && envCheck.channel) {
+              channel = envCheck.channel;
+          }
+          if (!locale && envCheck.locales) {
+              locale = envCheck.locales[0];
+          }
+      }
+
+      // Validate required parameters
+      if (!guid) {
+          console.log(colors.red('Please provide a guid or ensure you are in a directory with a valid .env file containing a GUID.'));
+          return;
+      }
+
+      if (!channel) {
+          console.log(colors.red('Please provide a channel or ensure you are in a directory with a valid .env file containing a channel.'));
+          return;
+      }
 
       let multibar = createMultibar({name: 'Pull'});
 
