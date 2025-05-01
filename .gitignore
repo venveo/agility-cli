@@ -33,3 +33,14 @@ yarn-error.log*
 
 # ignore tailwind styles
 /src/styles.css
+#cursor
+.cursor
+.cursor/*
+.cursor/**/*
+.cursor/manifest.md
+.cursor/rules/project-settings.mdc
+/.cursor
+/.cursor/*
+/.cursor/**/*
+/.cursor/manifest.md
+/.cursor/rules/project-settings.mdc

@@ -32,22 +32,16 @@ class Clean {
 
   async cleanAll() {
     auth = new Auth();
-    let code = new fileOperations();
-    let codeFileStatus = code.codeFileExists();
+    options = new mgmtApi.Options();
+    options.token = await auth.getToken();
+    options.baseUrl = auth.determineBaseUrl(this._guid);
 
-    if (codeFileStatus) {
-      let data = JSON.parse(code.readTempFile("code.json"));
+    console.log(options.baseUrl);
+    let mgmtApiClient:mgmtApi.ApiClient = new mgmtApi.ApiClient(options);
 
-      const form = new FormData();
-      form.append("cliCode", data.code);
-
-      let token = await auth.cliPoll(form, this._guid);
-      let multibar = createMultibar({ name: "Cleaning" });
-
-      options = new mgmtApi.Options();
-      options.token = token.access_token;
-
-      let mgmtApiClient:mgmtApi.ApiClient = new mgmtApi.ApiClient(options);
+    const multibar = createMultibar({
+      name: "Clean Instance"
+    });
 
       try {
         const answers = await inquirer.prompt([
@@ -68,28 +62,34 @@ class Clean {
             if (pages) {
               const containers = await this.cleanContainers(mgmtApiClient, multibar);
               if (containers) {
-                const models = await this.cleanModels(mgmtApiClient, multibar);
-                if (models) {
-                  const media = await this.cleanMedia(multibar);
-                  if (media) {
-                    return true;
-                  }
-                }
+                // const models = await this.cleanModels(mgmtApiClient, multibar);
+                // if (models) {
+                  // const media = await this.cleanMedia(multibar);
+                  // if (media) {
+                  //   return true;
+                  // }
+                // }
               }
             }
           }
 
         }
+
+        const mappingsPath = `agility-files/${this._guid}/mappings`;
+        if (fs.existsSync(mappingsPath)) {
+            fs.rmSync(mappingsPath, { recursive: true, force: true });
+            console.log(`✓ Deleted mappings folder for instance ${this._guid}`);
+        }
+
       } catch (err) {
         console.log("Error cleaning instance", err);
       } finally {
         console.log(ansiColors.green("🗑️ Instance cleaned successfully"));
         return true;
       }
-    }
-
-    return true;
+  
   }
+
 
   async cleanContainers(mgmt: mgmtApi.ApiClient, multibar: any) {
     const containers = await mgmt.containerMethods.getContainerList(this._guid);

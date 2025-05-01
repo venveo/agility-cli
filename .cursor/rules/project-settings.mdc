@@ -7,6 +7,10 @@ alwaysApply: true
 
 This is a CLI project for interacting with Agility CMS via Management and Sync APIs / SDKs.
 
+## Management SDK available in workspace
+For types and functions reference see
+`/Users/aaron/Documents/GitHub/agility-cms-management-sdk-typescript`
+
 ## Project Status
 
 We are currently modernizing the codebase to use inquirer prompts to provide a better visual experience to developers. I have written extensive code on top of the existing layer of the CLI however we now need to ensure the old base commands found in `src/index.ts` can utilize the new file and folder structure of the updated prompt driven layer functionality. 
@@ -31,6 +35,6 @@ We want to update any previous implementations of the file paths, if we can util
 - Token storage must use `keytar`, not file-based systems.
 
 ## Planning, Tracking and Execution 
-- Plan, track and execution all phases, tasks and courses of action in `manifest.md` before doing any work on the codebase. 
+- Plan, track and execution all phases, tasks and courses of action in `.cursor/manifest.md` before doing any work on the codebase. 
 - Loop through these and update your completion as you go, if we get interupted using the prompt `resume generating` should begin where it last left off.
 

@@ -5,6 +5,21 @@ const FormData = require('form-data');
 import * as cliProgress from 'cli-progress';
 import ansiColors from 'ansi-colors';
 import { homePrompt } from './prompts/home-prompt';
+import { Auth } from './auth';
+import { ReferenceMapper } from './mappers/mapper';
+import { container } from 'container';
+import { mapContentItem } from './mappers/content-item-mapper';
+import { findContainerInTargetInstance } from './mappers/finders/container-finder';
+import { ContainerPusher } from './mappers/pushers/container-pusher';
+import { ContentPusher } from './mappers/pushers/content-item-pusher';
+
+// Extend the PageItem type to include pageTemplateID
+declare module '@agility/management-sdk' {
+    interface PageItem {
+        pageTemplateID?: number;
+        
+    }
+}
 
 export class pushNew{
     _options : mgmtApi.Options;
@@ -13,28 +28,253 @@ export class pushNew{
     _targetGuid: string;
     _locale: string;
     _isPreview: boolean;
+    _token: string;
     processedModels: { [key: string]: number; };
+    processedDefinitionIds: { [key: number]: number; };
     processedContentIds : {[key: number]: number;}; //format Key -> Old ContentId, Value New ContentId.
     skippedContentItems: {[key: number]: string}; //format Key -> ContentId, Value ReferenceName of the content.
     processedGalleries: {[key: number]: number};
     processedTemplates: {[key: string]: number}; //format Key -> pageTemplateName, Value pageTemplateID.
     processedPages : {[key: number]: number}; //format Key -> old page id, Value new page id.
+    private settings: any;
+    private processedCount: number = 0;
+    processedAssets: { [key: string]: string; };
+    processedContainers: { [key: number]: number; };
+    private _apiClient: mgmtApi.ApiClient;
+    private _referenceMapper: ReferenceMapper;
+    private failedContainers: number = 0;
+    private failedContent: number = 0;
 
     constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean){
+        // Handle SSL certificate verification for local development
+        if (process.env.NODE_ENV === 'development' || process.env.LOCAL) {
+            process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        }
+        
         this._options = options;
         this._multibar = multibar;
         this._guid = guid;
         this._targetGuid = targetGuid;
         this._locale = locale;
         this._isPreview = isPreview;
+        this._token = options.token;
         this.processedModels = {};
+        this.processedDefinitionIds = {};
         this.processedContentIds = {};
         this.processedGalleries = {};
         this.skippedContentItems = {};
         this.processedTemplates = {};
         this.processedPages = {};
+        this.settings = {};
+        this.processedAssets = {};
+        this.processedContainers = {};
+        this._apiClient = new mgmtApi.ApiClient(this._options);
+        this._referenceMapper = new ReferenceMapper(this._guid, this._targetGuid);
     }
 
+    async initialize() {
+        let auth = new Auth();
+        this._options.token = await auth.getToken();
+    }
+
+    async pushInstance(): Promise<void> {
+        try {
+            // Push galleries and assets first
+            await this.pushGalleries(this._targetGuid);
+            await this.pushAssets(this._targetGuid);
+
+            // Get models
+            const models = await this.getModels();
+            if (!models || models.length === 0) {
+                console.log('No models found to push');
+                return;
+            }
+
+            let totalModels = models.length;
+            let successfulModels = 0;
+            let failedModels = 0;
+            let modelExists = false;
+            // Separate normal and linked models
+            const linkedModels = models.filter(model => this.isLinkedModel(model));
+            const normalModels = models.filter(model => !this.isLinkedModel(model));
+
+            // Process normal models first
+            // console.log(ansiColors.yellow(`Processing ${normalModels.length} normal models...`));
+            for (const model of normalModels) {
+                let apiClient = new mgmtApi.ApiClient(this._options);
+                let existingModel: mgmtApi.Model | null = null;
+                try {
+                    // First try to get the model from the target instance
+                    existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                    if (existingModel) {
+                        // Model exists in target, add it to reference mapper
+                        this._referenceMapper.addRecord('model', model, existingModel);
+                        console.log(`✓ Normal Model exists - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} - (ID: ${model.id}), ${ansiColors.green('Target')}: ${existingModel.referenceName} - (ID: ${existingModel.id})`);
+                        modelExists = true;
+                        successfulModels++;
+                        continue;
+                    }
+                } catch (error) {
+                    if (error.response && error.response.status !== 404) {
+                        console.error(`[Model] ✗ Error checking for existing model ${model.referenceName}: ${error.message}`);
+                        failedModels++;
+                        continue;
+                    }
+                    // 404 means model doesn't exist, which is fine - we'll create it
+                }
+
+                // Model doesn't exist in target, try to create it
+                try {
+
+                    const modelPayload = {
+                    ...model,
+                    id: existingModel ? existingModel.id : 0
+                    }
+                
+                    let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
+                    this._referenceMapper.addRecord('model', model, savedModel);
+                    console.log(`✓ Normal Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} (ID: ${model.id.toString()}), ${ansiColors.green('Target')}: ${savedModel.referenceName} (ID: ${savedModel.id.toString()})`);
+                    successfulModels++;
+                } catch (error) {
+                    console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
+                    failedModels++;
+                    if (error.response && error.response.status === 409) {
+                        // Conflict - model might have been created by another process
+                        try {
+                            let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                            if (existingModel) {
+                                this._referenceMapper.addRecord('model', model, existingModel);
+                                console.log(`✓ Normal Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green('Target')}: ${existingModel.referenceName}`);
+                                successfulModels++;
+                            }
+                        } catch (getError) {
+                            console.error(`[Model] Failed to get existing model: ${getError.message}`);
+                        }
+                    }
+                }
+            }
+
+            // Then process linked models
+            // console.log(ansiColors.yellow(`Processing ${linkedModels.length} linked models...`));
+            for (const model of linkedModels) {
+                let apiClient = new mgmtApi.ApiClient(this._options);
+                let existingModel: mgmtApi.Model | null = null;
+                try {
+                    // First try to get the model from the target instance
+                    existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                    if (existingModel) {
+                        // Model exists in target, add it to reference mapper
+                        this._referenceMapper.addRecord('model', model, existingModel);
+                        console.log(`✓ Linked Model exists - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} - (ID: ${model.id}), ${ansiColors.green('Target')}: ${existingModel.referenceName} - (ID: ${existingModel.id})`);
+                        successfulModels++;
+                        continue;
+                    }
+                } catch (error) {
+                    if (error.response && error.response.status !== 404) {
+                        console.error(`[Model] ✗ Error checking for existing model ${model.referenceName}: ${error.message}`);
+                        failedModels++;
+                        continue;
+                    }
+                    // 404 means model doesn't exist, which is fine - we'll create it
+                }
+
+                // Process linked content fields before creating the model
+                for (const field of model.fields) {
+                    if (field.type === 'Content' && field.settings['ContentDefinition']) {
+                        const linkedModelRef = field.settings['ContentDefinition'];
+                        // Check if the referenced model exists in the target
+                        const referencedModel = await apiClient.modelMethods.getModelByReferenceName(linkedModelRef, this._targetGuid);
+                        if (!referencedModel) {
+                            console.error(`[Model] ✗ Referenced model ${linkedModelRef} not found for linked model ${model.referenceName}`);
+                            failedModels++;
+                            continue;
+                        }
+                    }
+                }
+
+                // Model doesn't exist in target, try to create it
+                try {
+                    const modelPayload = {
+                    ...model,
+                    id: existingModel ? existingModel.id : 0
+                     }
+                    let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
+                    this._referenceMapper.addRecord('model', model, savedModel);
+                    console.log(`✓ Linked Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} (ID: ${model.id.toString()}), ${ansiColors.green('Target')}: ${savedModel.referenceName} (ID: ${savedModel.id.toString()})`);
+                    successfulModels++;
+                } catch (error) {
+                    console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
+                    failedModels++;
+                    if (error.response && error.response.status === 409) {
+                        // Conflict - model might have been created by another process
+                        try {
+                            let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                            if (existingModel) {
+                                this._referenceMapper.addRecord('model', model, existingModel);
+                                console.log(`✓ Linked Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green('Target')}: ${existingModel.referenceName}`);
+                                successfulModels++;
+                            }
+                        } catch (getError) {
+                            console.error(`[Model] Failed to get existing model: ${getError.message}`);
+                        }
+                    }
+                }
+            }
+
+            console.log(ansiColors.yellow(`✓ Processed ${successfulModels}/${totalModels} models (${failedModels} failed)`));
+
+            // Get containers
+            const containers = this.getBaseContainers();
+            if (!containers || containers.length === 0) {
+                console.log('No containers found to push');
+                return;
+            }
+
+            // Push containers using the new ContainerPusher
+            const containerPusher = new ContainerPusher(
+                this._apiClient,
+                this._referenceMapper,
+                this._targetGuid,
+            );
+            await containerPusher.pushContainers(containers);
+
+            // Get content items
+            const allContentItems = await this.getBaseContentItems();
+            if (!allContentItems || allContentItems.length === 0) {
+                console.log('No content items found to push');
+                return;
+            }
+
+            // Restore original content pusher logic
+           const contentPusher = new ContentPusher(
+            this._apiClient,
+            this._referenceMapper,
+            this._targetGuid,
+            this._locale
+           );
+           
+           await contentPusher.pushContentItems(allContentItems);
+
+            
+            // Push normal content first
+            // await this.pushNormalContentItems(normalContentItems, this._targetGuid);
+
+            // Then push linked content
+            // await this.pushLinkedContentItems(linkedContentItems, this._targetGuid);
+
+            // Push templates
+            const templates = await this.getBaseTemplates();
+            await this.pushTemplates(templates, this._targetGuid, this._locale);
+
+            // then push the pages
+            const pages = await this.getBasePages(this._locale);
+            await this.pushPages(this._targetGuid, this._locale, pages);
+
+        } catch (error) {
+            console.error('Error in pushInstance:', error);
+            throw error;
+        }
+    }
 
     /////////////////////////////START: METHODS FOR DEBUG ONLY/////////////////////////////////////////////////////////////////
     createAllContent(){
@@ -77,28 +317,47 @@ export class pushNew{
     }
     /////////////////////////////END: METHODS FOR DEBUG ONLY/////////////////////////////////////////////////////////////////
 
-    getBaseModels(baseFolder?: string){
-        if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = 'agility-files';
-          }
-        let fileOperation = new fileOperations();
-        try{
-            
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/models`, baseFolder);
-
-            let models : mgmtApi.Model[] = [];
-
-            for(let i = 0; i < files.length; i++){
-                let model = JSON.parse(files[i]) as mgmtApi.Model;
-                models.push(model);
-            }
-            return models;
-        } catch {
-            fileOperation.appendLogFile(`\n No Models were found in the source Instance to process.`);
-            return null;
-        }
+    private async getModels(): Promise<mgmtApi.Model[]> {
+        const models = this.getBaseModels() || [];
+        // console.log(`Found ${models.length} models to process`);
+        return models;
     }
 
+    private getBaseModels(): mgmtApi.Model[] {
+        const modelsPath = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/models`;
+        const modelFiles = fs.readdirSync(modelsPath);
+        return modelFiles.map(file => {
+            const modelData = JSON.parse(fs.readFileSync(`${modelsPath}/${file}`, 'utf8'));
+            const model = modelData as mgmtApi.Model;
+            // Add source model to reference mapper
+            this._referenceMapper.addRecord('model', model, null);
+            return model;
+        });
+    }
+
+    private async getLinkedModels(): Promise<mgmtApi.Model[]> {
+        const models = this.getBaseModels() || [];
+        const linkedModels = models.filter(model => this.isLinkedModel(model));
+        
+        // Add linked models to specialized reference mapping
+        for (const model of linkedModels) {
+            // this._referenceMapper.addRecord('linked-model', model, null);
+        }
+        
+        return linkedModels;
+    }
+
+    private async getNormalModels(): Promise<mgmtApi.Model[]> {
+        const models = this.getBaseModels() || [];
+        const normalModels = models.filter(model => !this.isLinkedModel(model));
+        
+        // Add normal models to specialized reference mapping
+        for (const model of normalModels) {
+            // this._referenceMapper.addRecord('normal-model', model, null);
+        }
+        
+        return normalModels;
+    }
 
     getBaseModel(modelId: string, baseFolder?: string){
         if(baseFolder === undefined || baseFolder === ''){
@@ -115,26 +374,7 @@ export class pushNew{
         }
     }
 
-    createBaseAssets(){
-        let fileOperation = new fileOperations();
-        try{
-            
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/json`);
-
-            let assets: mgmtApi.AssetMediaList[] = [];
-
-            for(let i = 0; i < files.length; i++){
-                let file = JSON.parse(files[i]) as mgmtApi.AssetMediaList;
-                assets.push(file);
-            }
-            return assets;
-        } catch {
-            fileOperation.appendLogFile(`\n No Assets were found in the source Instance to process.`);
-            return null;
-        }
-    }
-
-    createBaseGalleries(){
+    private getBaseGalleries(): mgmtApi.assetGalleries[] {
         let fileOperation = new fileOperations();
         try{
             let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/galleries`);
@@ -143,6 +383,8 @@ export class pushNew{
 
             for(let i = 0; i < files.length; i++){
                 let assetGallery = JSON.parse(files[i]) as mgmtApi.assetGalleries;
+                // Add source gallery to reference mapper immediately
+                this._referenceMapper.addRecord('gallery', assetGallery, null);
                 assetGalleries.push(assetGallery);
             }
             return assetGalleries;
@@ -152,38 +394,58 @@ export class pushNew{
         }
     }
 
-    getBaseContainers(){
+    private getBaseAssets(): mgmtApi.AssetMediaList[] {
         let fileOperation = new fileOperations();
         try{
-            
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/containers`);
+            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/json`);
 
-            let containers : mgmtApi.Container[] = [];
+            let assets: mgmtApi.AssetMediaList[] = [];
 
             for(let i = 0; i < files.length; i++){
-                let container = JSON.parse(files[i]) as mgmtApi.Container;
-                containers.push(container);
+                let file = JSON.parse(files[i]) as mgmtApi.AssetMediaList;
+                // Add each media item individually to the reference mapper
+                for (const media of file.assetMedias) {
+                    this._referenceMapper.addRecord('asset', media, null);
+                }
+                assets.push(file);
             }
-           return containers;
-        } catch{
-            fileOperation.appendLogFile(`\n No Containers were found in the source Instance to process.`);
+            return assets;
+        } catch {
+            fileOperation.appendLogFile(`\n No Assets were found in the source Instance to process.`);
             return null;
         }
     }
 
-    async createBaseTemplates(baseFolder?: string){
+    private getBaseContainers(): mgmtApi.Container[] {
+        const containersPath = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/containers`;
+        const containerFiles = fs.readdirSync(containersPath);
+        const containers: mgmtApi.Container[] = [];
+
+        for (const file of containerFiles) {
+            const containerData = JSON.parse(fs.readFileSync(`${containersPath}/${file}`, 'utf8'));
+            const container = containerData as mgmtApi.Container;
+            // Add source container to reference mapper immediately
+            this._referenceMapper.addRecord('container', container, null);
+            containers.push(container);
+        }
+
+        return containers;
+    }
+
+    async getBaseTemplates(baseFolder?: string): Promise<mgmtApi.PageModel[]> {
         if(baseFolder === undefined || baseFolder === ''){
             baseFolder = 'agility-files';
         }
         let fileOperation = new fileOperations();
         try{
-            
             let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/templates`, baseFolder);
 
             let pageModels : mgmtApi.PageModel[] = [];
 
             for(let i = 0; i < files.length; i++){
                 let pageModel = JSON.parse(files[i]) as mgmtApi.PageModel;
+                // Add source template to reference mapper immediately
+                // this._referenceMapper.addRecord('template', pageModel, null);
                 pageModels.push(pageModel);
             }
             return pageModels;
@@ -193,16 +455,17 @@ export class pushNew{
         }
     }
 
-    async createBasePages(locale: string){
+    async getBasePages(locale: string): Promise<mgmtApi.PageItem[]> {
         let fileOperation = new fileOperations();
         try{
-            
             let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/pages`);
 
             let pages : mgmtApi.PageItem[] = [];
 
             for(let i = 0; i < files.length; i++){
                 let page = JSON.parse(files[i]) as mgmtApi.PageItem;
+                // Add source page to reference mapper immediately
+                this._referenceMapper.addRecord('page', page, null);
                 pages.push(page);
             }
             return pages;
@@ -212,74 +475,70 @@ export class pushNew{
         }
     }
 
-    async getBaseContentItems(guid: string, locale: string, contentItems?: any[]){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let fileOperation = new fileOperations();
-        let contentItemsArray: mgmtApi.ContentItem[] = [];
+    private async getBaseContentItems(): Promise<mgmtApi.ContentItem[]> {
+        const contentPath = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/item`;
+        const contentFiles = fs.readdirSync(contentPath);
+        const contentItems: mgmtApi.ContentItem[] = [];
 
-       if (fileOperation.folderExists(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/item`)) {
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/item`);
-
-            const validBar1 = this._multibar.create(files.length, 0);
-            validBar1.update(0, {name : 'Content Items: Validation'});
-
-            let index = 1;
-
-            for (let i = 0; i < files.length; i++) {
-                let contentItem = JSON.parse(files[i]) as mgmtApi.ContentItem;
-                validBar1.update(index);
-                index += 1;
-                try {
-                    let container = await apiClient.containerMethods.getContainerByReferenceName(contentItem.properties.referenceName, guid);
-                    if (container) {
-                        contentItemsArray.push(contentItem);
-                    }
-                } catch {
-                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                    fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName}`);
-                    continue;
-                }
-            }
-        } else {
-            fileOperation.appendLogFile(`\n No Content Items were found in the source Instance to process.`);
+        for (const file of contentFiles) {
+            const contentItem = JSON.parse(fs.readFileSync(`${contentPath}/${file}`, 'utf8'));
+            // Add source content to reference mapper
+            this._referenceMapper.addRecord('content', contentItem, null);
+            contentItems.push(contentItem);
         }
 
-        return contentItemsArray;
+        return contentItems;
     }
 
-    async getLinkedContent(guid: string, contentItems: mgmtApi.ContentItem[]){
-            let linkedContentItems : mgmtApi.ContentItem[] = []
-            let apiClient = new mgmtApi.ApiClient(this._options);
-
-            const progressBar10 = this._multibar.create(contentItems.length, 0);
-            progressBar10.update(0, {name : 'Get Content Items: Linked'});
-
-            let index = 1;
-
-            for(let i = 0; i < contentItems.length; i++){
-                let contentItem = contentItems[i];
-                progressBar10.update(index);
-                index += 1;
-                let containerRef = contentItem.properties.referenceName;
-                try{
-                    let container = await apiClient.containerMethods.getContainerByReferenceName(containerRef, guid);
-                    let model = await apiClient.modelMethods.getContentModel(container.contentDefinitionID, guid);
-                
-                    model.fields.flat().find((field) => {
-                        if(field.type === 'Content'){
-                            return linkedContentItems.push(contentItem);
-                        }
-                    })
-                } catch {
-                    continue;
-                }
+    private isLinkedContent(contentItem: mgmtApi.ContentItem): boolean {
+        // Check if content item has any linked content fields
+        return Object.values(contentItem.fields).some(field => {
+            if (typeof field === 'string') {
+                return field.includes(',') && !isNaN(Number(field.split(',')[0]));
             }
-            return linkedContentItems;
+            if (typeof field === 'object' && field !== null) {
+                return 'contentid' in field;
+            }
+            return false;
+        });
+    }
+
+    private async getLinkedContent(guid: string, contentItems: mgmtApi.ContentItem[]): Promise<mgmtApi.ContentItem[]> {
+        let linkedContentItems: mgmtApi.ContentItem[] = [];
+        let apiClient = new mgmtApi.ApiClient(this._options);
+
+        let index = 1;
+
+        for (let i = 0; i < contentItems.length; i++) {
+            let contentItem = contentItems[i];
+            index += 1;
+            let containerRef = contentItem.properties.referenceName;
+            try {
+                let container = await this._referenceMapper.getMapping<mgmtApi.Container>('container', 'referenceName', containerRef);
+                let model = await apiClient.modelMethods.getContentModel(container.target.contentDefinitionID, guid);
+            
+                model.fields.flat().find((field) => {
+                    if (field.type === 'Content') {
+                        // Add linked content to reference mapper
+                        this._referenceMapper.addRecord('content', contentItem, null);
+                        return linkedContentItems.push(contentItem);
+                    }
+                });
+            } catch {
+                continue;
+            }
         }
+        return linkedContentItems;
+    }
         
     async getNormalContent(guid: string, baseContentItems: mgmtApi.ContentItem[], linkedContentItems: mgmtApi.ContentItem[]){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let contentItems = baseContentItems.filter(contentItem => linkedContentItems.indexOf(contentItem) < 0);
+
+        // Add normal content to reference mapper
+        for (const contentItem of contentItems) {
+            this._referenceMapper.addRecord('content', contentItem, null);
+        }
 
         return contentItems;
     }
@@ -287,19 +546,17 @@ export class pushNew{
     async pushTemplates(templates: mgmtApi.PageModel[], guid: string, locale: string){
         let apiClient = new mgmtApi.ApiClient(this._options);
         let createdTemplates: mgmtApi.PageModel[] = [];
-        const progressBar8 = this._multibar.create(templates.length, 0);
-        progressBar8.update(0, {name : 'Page Templates'});
-
         let index = 1;
         for(let i = 0; i < templates.length; i++){
             let template = templates[i];
-            progressBar8.update(index);
+            let payload = templates[i];
+            let originalID = template.pageTemplateID;
             index += 1;
             try{
                 let existingTemplate = await apiClient.pageMethods.getPageTemplateName(guid, locale, template.pageTemplateName);
 
                 if(existingTemplate){
-                    template.pageTemplateID = existingTemplate.pageTemplateID;
+                    // template.pageTemplateID = existingTemplate.pageTemplateID;
                     let existingDefinitions = await apiClient.pageMethods.getPageItemTemplates(guid, locale, existingTemplate.pageTemplateID);
 
                     if(existingDefinitions){
@@ -317,6 +574,16 @@ export class pushNew{
                             }
                         }
                     }
+
+                    // Add template to reference mapper using both name and ID as keys
+                    // console.log(`Adding template to reference mapper - Name: ${template.pageTemplateName}, ID: ${template.pageTemplateID}`);
+                    // console.log('template', template);
+                    // console.log('existingTemplate', existingTemplate);
+                   
+                    this._referenceMapper.addRecord('template', template, existingTemplate);
+                    console.log(`✓ Template exists - ${ansiColors.green('Source')}: ${template.pageTemplateName} (ID: ${originalID}), ${ansiColors.green('Target')}: ${existingTemplate.pageTemplateName} (ID: ${existingTemplate.pageTemplateID})`);
+                    createdTemplates.push(existingTemplate);
+                    continue;
                 }
             } catch{
                 template.pageTemplateID = -1;
@@ -329,1452 +596,732 @@ export class pushNew{
                     template.contentSectionDefinitions[j].itemContainerID = 0;
                     template.contentSectionDefinitions[j].publishContentItemID = 0;
                 }
-            }
+           
             try{
                 let createdTemplate =  await apiClient.pageMethods.savePageTemplate(guid, locale, template);
                 createdTemplates.push(createdTemplate);
                 this.processedTemplates[createdTemplate.pageTemplateName] = createdTemplate.pageTemplateID;
+                // Add template to reference mapper
+                console.log(`Adding new template to reference mapper - Name: ${template.pageTemplateName}, ID: ${template.pageTemplateID}`);
+                this._referenceMapper.addRecord('template', template, createdTemplate);
+                console.log(`✓ Template created - ${ansiColors.green('Source')}: ${template.pageTemplateName} (ID: ${originalID}), ${ansiColors.green('Target')}: ${createdTemplate.pageTemplateName} (ID: ${createdTemplate.pageTemplateID})`);
             } catch{
+                console.log(`✗ Failed to create template: ${template.pageTemplateName}`);
             }
+        }
        }
 
        return createdTemplates;
     }
 
-    
-    async pushPages(guid: string, locale: string, pages: mgmtApi.PageItem[]){
-        const progressBar9 = this._multibar.create(pages.length, 0);
-        let code = new fileOperations();
-//        this.processedContentIds = JSON.parse(code.readTempFile('processed.json'));
-        progressBar9.update(0, {name : 'Pages'});
+    async pushPages(guid: string, locale: string, pages: mgmtApi.PageItem[]) {
+        let totalPages = pages.length;
+        let processedPages = 0;
+        let failedPages = 0;
 
-        let index = 1;
-        
-        let parentPages = pages.filter(p => p.parentPageID < 0);
 
-        let childPages = pages.filter(p => p.parentPageID > 0);
-
-       for(let i = 0; i < parentPages.length; i++){
-          progressBar9.update(index);
-            index += 1;
-            await this.processPage(parentPages[i], guid, locale, false);
-        }
-
-       for(let j = 0; j < childPages.length; j++){
-           progressBar9.update(index);
-            index += 1;
-            await this.processPage(childPages[j], guid, locale, true);
-        }
-      // this._multibar.stop();
-    }
-
-    async processPage(page: mgmtApi.PageItem, guid: string, locale: string, isChildPage: boolean){
-        let fileOperation = new fileOperations();
-        let pageName = page.name;
-        let pageId = page.pageID;
-        try{
-            let apiClient = new mgmtApi.ApiClient(this._options);
-            let parentPageID = -1;
-            if(isChildPage){
-                if(this.processedPages[page.parentPageID]){
-                    parentPageID = this.processedPages[page.parentPageID];
-                    page.parentPageID = parentPageID;
-                }
-                else{
-                    page = null;
-                    fileOperation.appendLogFile(`\n Unable to process page for name ${page.name} with pageID ${page.pageID} as the parent page is not present in the instance.`);
+        // First process all parent pages (pages without parentPageID)
+        for (let page of pages) {
+            if (page.parentPageID === -1) {
+                try {
+                    await this.processPage(page, guid, locale, false);
+                    processedPages++;
+                } catch (error) {
+                    console.log(`✗ Failed to process parent page: ${page.name}`, error);
+                    failedPages++;
                 }
             }
-            if(page){
-                if(page.zones){
-                    let keys = Object.keys(page.zones);
-                    let zones = page.zones;
-                    for(let k = 0; k < keys.length; k++){
-                        let zone = zones[keys[k]];
-                        for(let z = 0; z < zone.length; z++){
-                            if('contentId' in zone[z].item){
-                                if(this.processedContentIds[zone[z].item.contentId]){
-                                    zone[z].item.contentId = this.processedContentIds[zone[z].item.contentId];
-                                    continue;
-                                }
-                                else{
-                                    fileOperation.appendLogFile(`\n Unable to process page for name ${page.name} with pageID ${page.pageID} as the content is not present in the instance.`);
-                                    page = null;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                
-            }
-
-            if(page){
-                let oldPageId = page.pageID;
-                page.pageID = -1;
-                page.channelID = -1;
-                let createdPage = await apiClient.pageMethods.savePage(page, guid, locale, parentPageID, -1);
-                if(createdPage[0]){
-                    if(createdPage[0] > 0){
-                        this.processedPages[oldPageId] = createdPage[0];
-                    }
-                    else{
-                        fileOperation.appendLogFile(`\n Unable to create page for name ${page.name} with pageID ${oldPageId}.`);
-                    }
-                }
-            }
-        } catch{
-            fileOperation.appendLogFile(`\n Unable to create page for name ${pageName} with id ${pageId}.`);
         }
-        
-    }
 
-    async pushNormalContentItems(guid: string, locale: string, contentItems: mgmtApi.ContentItem[]){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let fileOperation = new fileOperations();
-        const progressBar6 = this._multibar.create(contentItems.length, 0);
-        progressBar6.update(0, {name : 'Content Items: Non Linked'});
-
-        let index = 1;
-        for(let i = 0; i < contentItems.length; i++){
-            let contentItem = contentItems[i]; //contentItems.find((content) => content.contentID === 122);//160, 106
-            progressBar6.update(index);
-            index += 1;
-
-            let container = new mgmtApi.Container();
-            let model = new mgmtApi.Model();
-                try{
-                    container = await apiClient.containerMethods.getContainerByReferenceName(contentItem.properties.referenceName, guid);
-                } catch {
-                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                    fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+        // Then process all child pages (pages with parentPageID)
+        for (let page of pages) {
+            if (page.parentPageID !== -1) {
+                // Get the parent page reference
+                let parentRef = this._referenceMapper.getMappingByKey<mgmtApi.PageItem>('page', 'pageID', page.parentPageID);
+                if (!parentRef) {
+                    console.log(`✗ Parent page not found for child page: ${page.name} (Parent ID: ${page.parentPageID})`);
+                    failedPages++;
                     continue;
                 }
-            
-                try{
-                    model = await apiClient.modelMethods.getContentModel(container.contentDefinitionID, guid);
-                } catch{
-                    fileOperation.appendLogFile(`\n Unable to find model for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+
+                const { source, target:targetParent } = parentRef;
+                if (!targetParent) {
+                    console.log(`✗ Parent page not processed for child page: ${page.name} (Parent ID: ${page.parentPageID})`);
+                    failedPages++;
                     continue;
                 }
-            for(let j = 0; j < model.fields.length; j++){
-                let field = model.fields[j];
-                let fieldName = this.camelize(field.name);
-                let fieldVal = contentItem.fields[fieldName];
-
-                if(field.type === 'ImageAttachment' || field.type === 'FileAttachment' || field.type === 'AttachmentList'){
-                    if(typeof fieldVal === 'object'){
-                            if(Array.isArray(fieldVal)){
-                                for(let k = 0; k < fieldVal.length; k++){
-                                    let retUrl = await this.changeOriginKey(guid, fieldVal[k].url);
-                                    contentItem.fields[fieldName][k].url = retUrl;
-                                }
-                            } else {
-                                if('url' in fieldVal){
-                                    let retUrl = await this.changeOriginKey(guid, fieldVal.url);
-                                    contentItem.fields[fieldName].url = retUrl;
-                                }
-                            }
-                    } 
-                }
-                else 
-                {
-                    if(typeof fieldVal === 'object'){
-                        if('fulllist' in fieldVal){
-                            delete fieldVal.fulllist;
-                            if(field.type === 'PhotoGallery'){
-                                let oldGalleryId = fieldVal.galleryid;
-                                if(this.processedGalleries[oldGalleryId]){
-                                    contentItem.fields[fieldName] = this.processedGalleries[oldGalleryId].toString();
-                                }
-                                else{
-                                    contentItem.fields[fieldName] = fieldVal.galleryid.toString();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            const oldContentId = contentItem.contentID;   
-            contentItem.contentID = -1;
-
-            let createdContentItemId = await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
-
-            if(createdContentItemId[0]){
-                if(createdContentItemId[0] > 0){
-                    this.processedContentIds[oldContentId] = createdContentItemId[0];
-                }
-                else{
-                    this.skippedContentItems[oldContentId] = contentItem.properties.referenceName;
-                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${oldContentId}.`);
-                }
-            }
-        }
-   }
-
-   async pushLinkedContentItems(guid: string, locale: string, contentItems: mgmtApi.ContentItem[]){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let fileOperation = new fileOperations();
-        const progressBar7 = this._multibar.create(contentItems.length, 0);
-        progressBar7.update(0, {name : 'Content Items: Linked'});
-
-        let index = 1;
-        let contentLength = contentItems.length;
-        try{
-            do{
-                for(let i = 0; i < contentItems.length; i++){
-                    let contentItem = contentItems[i];
-                    if(index <= contentLength)
-                        progressBar7.update(index);
-                    index += 1;
-                    if(this.skippedContentItems[contentItem.contentID]){
-                        contentItem = null;
-                    }
-                    if(!contentItem){
-                        continue;
-                    }
-                    let container = new mgmtApi.Container();
-                    let model = new mgmtApi.Model();
-        
-                    try{
-                        container = await apiClient.containerMethods.getContainerByReferenceName(contentItem.properties.referenceName, guid);
-                    } catch {
-                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                        fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                        contentItem[i] = null;
-                    }
-                
-                    try{
-                        model = await apiClient.modelMethods.getContentModel(container.contentDefinitionID, guid);
-                    } catch{
-                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                        fileOperation.appendLogFile(`\n Unable to find model for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                        contentItem[i] = null;
-                    }
-                    for(let j = 0; j < model.fields.length; j++){
-                        let field = model.fields[j];
-                        let settings = field.settings;
-                        let fieldName = this.camelize(field.name);
-                        let fieldVal = contentItem.fields[fieldName];
-                        if(fieldVal){
-                            if(field.type === 'Content'){
-                                 if(settings['LinkeContentDropdownValueField']){
-                                     if(settings['LinkeContentDropdownValueField']!=='CREATENEW'){
-                                        let linkedField = this.camelize(settings['LinkeContentDropdownValueField']);
-                                        let linkedContentIds = contentItem.fields[linkedField];
-                                        let newlinkedContentIds = '';
-                                        if(linkedContentIds){
-                                            let splitIds = linkedContentIds.split(',');
-                                            for(let k = 0; k < splitIds.length; k++){
-                                                let id = splitIds[k];
-                                                if(this.skippedContentItems[id]){
-                                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                                    continue;
-                                                }
-                                                if(this.processedContentIds[id]){
-                                                    let newSortId = this.processedContentIds[id].toString();
-                                                    if(!newlinkedContentIds){
-                                                        newlinkedContentIds = newSortId.toString();
-                                                        
-                                                    } else{
-                                                        newlinkedContentIds += ',' + newSortId.toString();
-                                                    }
-                                                }
-                                                else{
-                                                    try{
-                                                        let file = fileOperation.readFile(`agility-files/${locale}/item/${id}.json`);
-                                                        contentItem = null;
-                                                        break;
-                                                    } catch{
-                                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                        this.skippedContentItems[id] = 'OrphanRef';
-                                                        fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}.`);
-                                                        continue;
-                                                    }
-                                                    
-                                                }
-                                            }
-                                        }
-                                        if(newlinkedContentIds)
-                                            contentItem.fields[linkedField] = newlinkedContentIds;
-                                     }
-                                 }
-                                 if(settings['SortIDFieldName']){
-                                    if(settings['SortIDFieldName']!=='CREATENEW'){
-                                        let sortField = this.camelize(settings['SortIDFieldName']);
-                                        let sortContentIds = contentItem.fields[sortField];
-                                        let newSortContentIds = '';
-                                        
-                                        if(sortContentIds){
-                                            let splitIds = sortContentIds.split(',');
-                                            for(let k = 0; k < splitIds.length; k++){
-                                                let id = splitIds[k];
-                                                if(this.skippedContentItems[id]){
-                                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                                    continue;
-                                                }
-                                                if(this.processedContentIds[id]){
-                                                    let newSortId = this.processedContentIds[id].toString();
-                                                    if(!newSortContentIds){
-                                                        newSortContentIds = newSortId.toString();
-                                                        
-                                                    } else{
-                                                        newSortContentIds += ',' + newSortId.toString();
-                                                    }
-                                                }
-                                                else{
-                                                    try{
-                                                        let file = fileOperation.readFile(`agility-files/${locale}/item/${id}.json`);
-                                                        contentItem = null;
-                                                        break;
-                                                    } catch{
-                                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                        this.skippedContentItems[id] = 'OrphanRef';
-                                                        fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}`);
-                                                        continue;
-                                                    }
-                                                    
-                                                }
-                                            }
-                                        }
-                                        if(newSortContentIds)
-                                            contentItem.fields[sortField] = newSortContentIds;
-                                    }
-                                 }
-                                     delete fieldVal.fulllist;
-                                     if('contentid' in fieldVal){
-                                         let linkedContentId = fieldVal.contentid;
-                                         if(this.skippedContentItems[linkedContentId]){
-                                             this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                             fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                             continue;
-                                         }
-                                         if(this.processedContentIds[linkedContentId]){
-                                             let file = fileOperation.readFile(`agility-files/${locale}/item/${linkedContentId}.json`);
-                                             let extractedContent = JSON.parse(file) as mgmtApi.ContentItem;
-                                             contentItem.fields[fieldName] = extractedContent.properties.referenceName; 
-                                         }
-                                         else{
-                                             try{
-                                                 let file = fileOperation.readFile(`agility-files/${locale}/item/${linkedContentId}.json`);
-                                                 contentItem = null;
-                                                 break;
-                                             }
-                                             catch{
-                                                 this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                 this.skippedContentItems[linkedContentId] = 'OrphanRef';
-                                                 fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${linkedContentId}`);
-                                                 continue;
-                                             }
-                                             
-                                         }
-                                     }
-                                     if('referencename' in fieldVal){
-                                         let refName = fieldVal.referencename;
-                                         try{
-                                             let container = await apiClient.containerMethods.getContainerByReferenceName(refName, guid);
-                                             if(!container){
-                                                 this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                 fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                                 continue;
-                                             }
-                                             if('sortids' in fieldVal){
-                                                 contentItem.fields[fieldName].referencename = fieldVal.referencename;
-                                             }
-                                             else{
-                                                 contentItem.fields[fieldName] = fieldVal.referencename;
-                                             }
-                                         } catch{
-                                             this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                             fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                             continue;
-                                         }
-                                     }
-                                     if('sortids' in fieldVal){
-                                         let sortids = fieldVal.sortids.split(',');
-                                         let newSortIds = '';
-                                         for(let s = 0; s < sortids.length; s++){
-                                             let sortid = sortids[s];
-                                             if(this.skippedContentItems[sortid]){
-                                                 this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                 fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                                 continue;
-                                             }
-                                             if(this.processedContentIds[sortid]){
-                                                 let newSortId = this.processedContentIds[sortid].toString();
-                                                 if(!newSortIds){
-                                                     newSortIds = newSortId.toString();
-                                                     
-                                                 } else{
-                                                     newSortIds += ',' + newSortId.toString();
-                                                 }
-                                             }
-                                             else{
-                                                 try{
-                                                     let file = fileOperation.readFile(`agility-files/${locale}/item/${sortid}.json`);
-                                                     contentItem = null;
-                                                     break;
-                                                 } catch{
-                                                     this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                                     this.skippedContentItems[sortid] = 'OrphanRef';
-                                                     fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. . Orphan ID ${sortid}`);
-                                                     continue;
-                                                 }
-                                                 
-                                             }
-                                         }
-                                         if(newSortIds){
-                                             newSortIds = newSortIds.substring(0, newSortIds.length);
-                                         }
-                                         contentItem.fields[fieldName].sortids = newSortIds;
-                                     }
-                                 
-                             }
-                             else if(field.type === 'ImageAttachment' || field.type === 'FileAttachment' || field.type === 'AttachmentList'){
-                                 if(typeof fieldVal === 'object'){
-                                     if(Array.isArray(fieldVal)){
-                                         for(let k = 0; k < fieldVal.length; k++){
-                                             let retUrl = await this.changeOriginKey(guid, fieldVal[k].url);
-                                             contentItem.fields[fieldName][k].url = retUrl;
-                                         }
-                                     } else {
-                                         if('url' in fieldVal){
-                                             let retUrl = await this.changeOriginKey(guid, fieldVal.url);
-                                             contentItem.fields[fieldName].url = retUrl;
-                                         }
-                                     }
-                                 } 
-                             }
-                             else 
-                             {
-                                 if(typeof fieldVal === 'object'){
-                                     if('fulllist' in fieldVal){
-                                         delete fieldVal.fulllist;
-                                         if(field.type === 'PhotoGallery'){
-                                             let oldGalleryId = fieldVal.galleryid;
-                                             if(this.processedGalleries[oldGalleryId]){
-                                                 contentItem.fields[fieldName] = this.processedGalleries[oldGalleryId].toString();
-                                             }
-                                             else{
-                                                 contentItem.fields[fieldName] = fieldVal.galleryid.toString();
-                                             }
-                                         }
-                                     }
-                                 }
-                             }
-                        }
-                        
-                    }
-    
-                    if(contentItem){
-                        if(!this.skippedContentItems[contentItem.contentID]){
-                            const oldContentId = contentItem.contentID; 
-                            contentItem.contentID = -1;
-                            
-                            let createdContentItemId = await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
-    
-                            if(createdContentItemId[0]){
-                                if(createdContentItemId[0] > 0){
-                                    this.processedContentIds[oldContentId] = createdContentItemId[0];
-                                }
-                                else{
-                                    this.skippedContentItems[oldContentId] = contentItem.properties.referenceName;
-                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${oldContentId}.`);
-                                }
-                            }
-                            contentItem[i] = null;
-                        }
-                   
-                    }
-                }
-            } while(contentItems.filter(c => c !== null).length !==0)
-        } catch {
-
-        }
-   }
-    
-
-
-    async changeOriginKey(guid: string, url: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-
-        let defaultContainer = await apiClient.assetMethods.getDefaultContainer(guid);
-
-        let filePath = this.getFilePath(url);
-        filePath = filePath.replace(/%20/g, " ");
-
-        let edgeUrl = `${defaultContainer.edgeUrl}/${filePath}`;
-
-        try{
-            let existingMedia = await apiClient.assetMethods.getAssetByUrl(edgeUrl, guid);
-            return edgeUrl;
-        } catch{
-            return url;
-        }
-    }
-
-     camelize(str: string) {
-        return str.replace(/(?:^\w|[A-Z]|\b\w)/g, function(word, index) {
-          return index === 0 ? word.toLowerCase() : word.toUpperCase();
-        }).replace(/\s+/g, '');
-      }
-
-    async getLinkedModels(models: mgmtApi.Model[]){
-        try{
-            let linkedModels : mgmtApi.Model[] = [];
-            models.forEach((model) => model.fields.flat().find((field)=> {
-                if(field.type === 'Content') {
-                    return linkedModels.push(model);
-                };
-            } ));
-            return linkedModels;
-        } catch {
-
-        }
-    }
-
-    async getNormalModels(allModels: mgmtApi.Model[], linkedModels: mgmtApi.Model[]){
-        try{
-            let normalModels = allModels.filter(model => linkedModels.indexOf(model) < 0);
-            return normalModels;
-        } catch {
-
-        }
-    }
-
-    async pushNormalModels(model: mgmtApi.Model, guid: string){
-        let procesedModel = await this.createModel(model, guid);
-        return procesedModel;
-    }
-
-    async pushContainers(containers: mgmtApi.Container[], models: mgmtApi.Model[], guid: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        try{
-            const progressBar5 = this._multibar.create(containers.length, 0);
-            progressBar5.update(0, {name : 'Containers'});
-
-            let modelRefs: { [key: number]: string; } = {};
-
-            let index = 1;
-            for(let i = 0; i < containers.length; i++){
-                let container = containers[i];
-                try{
-                    let referenceName = models.find(model => model.id === container.contentDefinitionID);
-                    if(referenceName){
-                        if(!modelRefs[container.contentDefinitionID])
-                            modelRefs[container.contentDefinitionID] = referenceName.referenceName;
-                    }
-                } catch {
-
-                }
-                
-            }
-            for(let i = 0; i < containers.length; i++){
-                let container = containers[i];
-                progressBar5.update(index);
-                index += 1;
-                let referenceName = modelRefs[container.contentDefinitionID];
-                if(referenceName){
-                    let modelID = this.processedModels[referenceName];
-                    if(modelID){
-                        container.contentDefinitionID = modelID;
-                        try{
-                            let existingContainer = await apiClient.containerMethods.getContainerByReferenceName(container.referenceName, guid);
-                            if(existingContainer){
-                                container.contentViewID = existingContainer.contentViewID;
-                            } else {
-                                container.contentViewID = -1;
-                            }
-                            await apiClient.containerMethods.saveContainer(container, guid);
-                        } catch{
-                            container.contentViewID = -1;
-                            await apiClient.containerMethods.saveContainer(container, guid);
-                        }
-                    }
-                    else{
-                    }
-                } else{
-                }
-            }
-        } catch{
-
-        }
-        
-    }
-
-    async pushLinkedModels(models: mgmtApi.Model[], guid: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let fileOperation = new fileOperations();
-        let processedModels: mgmtApi.Model[] = [];
-        let completedModels: string[] = [];
-        let unprocessedModels: string[] = [];
-        const progressBar4 = this._multibar.create(models.length, 0);
-        progressBar4.update(0, {name : 'Models: Linked'});
-        let index = 1;
-        do{
-            for(let i = 0; i < models.length; i++ ){
-                let model = models[i];
-                progressBar4.update(index);
-                index += 1;
-
-                if(!model){
-                    continue;
-                }
-                try{
-                    let existing = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, guid);
-                    if(existing){
-                        let updatesToModel = this.updateModel(existing, model);
-                        updatesToModel.id = existing.id;
-                        let updatedModel = await apiClient.modelMethods.saveModel(updatesToModel, guid);
-                        processedModels.push(updatedModel);
-                        this.processedModels[updatedModel.referenceName] = updatedModel.id;
-                        completedModels.push(updatedModel.referenceName);
-                        models[i] = null;
-                    }
-                } catch{
-                    for(let j = 0; j < model.fields.length; j++){
-                        let field = model.fields[j];
-                        if(field.settings['ContentDefinition']){
-                            let modelRef = field.settings['ContentDefinition'];
-                            if(model.referenceName !== modelRef){
-                                if(this.processedModels[modelRef] && !(this.processedModels[model.referenceName])){
-                                    model.id = 0;
-                                    try{
-                                        let createdModel = await apiClient.modelMethods.saveModel(model, guid);
-                                        processedModels.push(createdModel);
-                                        this.processedModels[createdModel.referenceName] = createdModel.id;
-                                        completedModels.push(createdModel.referenceName);
-                                        models[i] = null;
-                                    } catch{
-                                        unprocessedModels.push(model.referenceName);
-                                        //fileOperation.appendLogFile(`\n Unable to process model for referenceName ${model.referenceName} with modelId ${model.id}.`);
-                                        models[i] = null;
-                                        continue;
-                                    }
-                                }
-                            } else{
-                                let oldModelId = model.id;
-                                model.id = 0;
-                                try{
-                                    let createdModel = await apiClient.modelMethods.saveModel(model, guid);
-                                    processedModels.push(createdModel);
-                                    this.processedModels[createdModel.referenceName] = createdModel.id;
-                                    completedModels.push(createdModel.referenceName);
-                                    models[i] = null;
-                                } catch{
-                                    unprocessedModels.push(model.referenceName);
-                                    //fileOperation.appendLogFile(`\n Unable to process model for referenceName ${model.referenceName} with modelId ${oldModelId}.`);
-                                    models[i] = null;
-                                    continue;
-                                }
-                            }
-                            
-                        }
-                        else{
-                            //special case to handle if the content definition id is not present.
-                            let oldModelId = model.id;
-                            model.id = 0;
-                                try{
-                                    let createdModel = await apiClient.modelMethods.saveModel(model, guid);
-                                    processedModels.push(createdModel);
-                                    this.processedModels[createdModel.referenceName] = createdModel.id;
-                                    completedModels.push(createdModel.referenceName);
-                                    models[i] = null;
-                                } catch (err){
-                                    unprocessedModels.push(model.referenceName);
-                                    //fileOperation.appendLogFile(`\n Unable to process model for referenceName ${model.referenceName} with modelId ${oldModelId}.`);
-                                    models[i] = null;
-                                    continue;
-                                }
-                        }
-                    }
-                }
-
-            }
-        } while(models.filter(m => m !== null).length !== 0)
-        
-        let unprocessed = unprocessedModels.filter((x) => !completedModels.includes(x));
-
-        for(let i = 0; i < unprocessed.length; i++){
-            fileOperation.appendLogFile(`\n Unable to process model for referenceName ${unprocessed[i]}.`);
-        }
-        return processedModels;
-    }
-
-
-    async createModel(model: mgmtApi.Model, guid: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        try{
-            let existing = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, guid);
-            let oldModelId = model.id;
-            if(existing){
-                let updatesToModel = this.updateModel(existing, model);
-                updatesToModel.id = existing.id;
-                let updatedModel = await apiClient.modelMethods.saveModel(updatesToModel,guid);
-                this.processedModels[updatedModel.referenceName] = updatedModel.id;
-                return updatedModel;
-            } else{
-                model.id = 0;
-                let newModel =  await apiClient.modelMethods.saveModel(model,guid);
-                this.processedModels[newModel.referenceName] = newModel.id;
-                return newModel;
-            }
-        }
-        catch{
-            model.id = 0;
-            let newModel =  await apiClient.modelMethods.saveModel(model,guid);
-            this.processedModels[newModel.referenceName] = newModel.id;
-            return newModel;
-        }
-    }
-
-    updateFields(obj1: mgmtApi.Model, obj2: mgmtApi.Model): mgmtApi.ModelField[] {
-        const updatedFields: mgmtApi.ModelField[] = [];
-      
-        obj1.fields.forEach((field1) => {
-            const field2Index = obj2.fields.findIndex((field2) => field2.name === field1.name);
-      
-            if (field2Index !== -1) {
-                field1.settings = { ...field1.settings, ...obj2.fields[field2Index].settings };
-                updatedFields.push(field1);
-            } else {
-                updatedFields.push(field1);
-            }
-        });
-      
-        obj2.fields.forEach((field2) => {
-            const field1Index = obj1.fields.findIndex((field1) => field1.name === field2.name);
-      
-            if (field1Index === -1) {
-                updatedFields.push(field2);
-            }
-        });
-      
-        return updatedFields;
-      }
-      
-      updateModel(obj1: mgmtApi.Model, obj2: mgmtApi.Model): mgmtApi.Model {
-        const updatedObj: mgmtApi.Model = {
-            ...obj1,
-            id: obj1.id,
-            lastModifiedDate: obj1.lastModifiedDate,
-        };
-      
-        // Update other properties from obj2
-        updatedObj.displayName = obj2.displayName;
-        updatedObj.referenceName = obj2.referenceName;
-        updatedObj.lastModifiedBy = obj2.lastModifiedBy;
-        updatedObj.lastModifiedAuthorID = obj2.lastModifiedAuthorID;
-        updatedObj.description = obj2.description;
-        updatedObj.allowTagging = obj2.allowTagging;
-        updatedObj.contentDefinitionTypeName = obj2.contentDefinitionTypeName;
-        updatedObj.isPublished = obj2.isPublished;
-        updatedObj.wasUnpublished = obj2.wasUnpublished;
-      
-        // Update fields based on rules
-        updatedObj.fields = this.updateFields(updatedObj, obj2);
-      
-        return updatedObj;
-      }
-      
-
-    async validateDryRun(model: mgmtApi.Model, guid: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let differences: any = {};
-        try{
-            let existing = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, guid);
-            if(existing){
-              differences =  await this.findModelDifferences(model, existing, model.referenceName);
-            }
-            else{
-                differences['referenceName'] = {
-                    referenceName : 'Model with referenceName ' + model.referenceName + ' will be added.'
-                }
-            }
-        } catch{
-            differences['referenceName'] = {
-                referenceName : 'Model with referenceName ' + model.referenceName + ' will be added.'
-            }
-        }
-        return differences;
-    }
-
-    async validateDryRunLinkedModels(model: mgmtApi.Model, guid: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let differences: any = {};
-        let fileOperation = new fileOperations();
-        for(let j = 0; j < model.fields.length; j++){
-            let field = model.fields[j];
-            if(field.settings['ContentDefinition']){
-                let modelRef = field.settings['ContentDefinition'];
-                try{
-                    let existingLinked = await apiClient.modelMethods.getModelByReferenceName(modelRef, guid);
-                    if(existingLinked){
-                        if(fileOperation.checkFileExists(`agility-files/models/${existingLinked.id}.json`)){
-                            let file = fileOperation.readFile(`agility-files/models/${existingLinked.id}.json`);
-                            const modelData = JSON.parse(file) as mgmtApi.Model;
-                            differences =  await this.findModelDifferences(modelData, existingLinked, model.referenceName);
-                        }
-                        else{
-                            fileOperation.appendLogFile(`\n Unable to find model for referenceName ${existingLinked.referenceName} in the dry run for linked models.`);
-                        }
-                       
-                    }
-                }
-                catch{
-                    differences['referenceName'] = {
-                        referenceName : 'Model with referenceName ' + modelRef + ' will be added.'
-                    }
-                }
-                
-            }
-        }
-        try{
-            let existing = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, guid);
-            if(existing){
-                differences =  await this.findModelDifferences(model, existing, model.referenceName);
-              }
-              else{
-                  differences['referenceName'] = {
-                      referenceName : 'Model with referenceName ' + model.referenceName + ' will be added.'
-                  }
-              }
-        }
-        catch{
-            differences['referenceName'] = {
-                referenceName : 'Model with referenceName ' + model.referenceName + ' will be added.'
-            }
-        }
-        return differences;
-    }
-
-    async validateDryRunTemplates(template: mgmtApi.PageModel, guid: string, locale: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let differences: any = {};
-        try{
-            let existingTemplate = await apiClient.pageMethods.getPageTemplateName(guid, locale, template.pageTemplateName);
-            if(existingTemplate){
-                differences = await this.findTemplateDifferences(template, existingTemplate, existingTemplate.pageTemplateName);
-            }
-            else{
-                differences['templateName'] = {
-                    templateName : 'Page Template with templateName ' + template.pageTemplateName + ' will be added.'
-                }
-            }
-        }
-        catch{
-            differences['templateName'] = {
-                templateName : 'Page Template with templateName ' + template.pageTemplateName + ' will be added.'
-            }
-        }
-
-        return differences;
-    }
-
-    // async compareTemplateObjects(obj1: any, obj2: any, templateName: string) {
-    //     const differences: any = {};
-    //     const ignoreFields = ['pageTemplateID', 'releaseDate', 'pullDate'];
-    //     const compareProps = (obj1: any, obj2: any, path: string = '') => {
-    //       for (const key in obj1) {
-    //         if (obj1.hasOwnProperty(key) && !ignoreFields.includes(key)) {
-    //           const newPath = path ? `${path}.${key}` : key;
-    //           if (typeof obj1[key] === 'object' && obj1[key] !== null && typeof obj2[key] === 'object' && obj2[key] !== null) {
-    //             compareProps(obj1[key], obj2[key], newPath);
-    //           } else if (obj1[key] !== obj2[key]) {
-    //             differences[newPath] = {
-    //               oldValue: obj1[key],
-    //               newValue: obj2[key],
-    //               templateName: templateName
-    //             };
-    //           }
-    //         }
-    //       }
-    //     };
-      
-    //     compareProps(obj1, obj2);
-    //     return differences;
-    //   }
-
-      findModelDifferences(obj1: any, obj2: any, referenceName: string): { added: any; updated: any } {
-        const added: any = {};
-        const updated: any = {};
-        const data: any = {};
-    
-        if (obj1.displayName !== obj2.displayName) {
-          updated.displayName = obj1.displayName;
-        }
-         
-        obj1.fields.forEach((field1) => {
-          const field2 = obj2.fields.find((f) => f.name === field1.name);
-      
-          if (!field2) {
-            added[field1.name] = field1;
-          } else {
-            const updatedProps: any = {};
-      
-            if (field1.label !== field2.label) {
-              updatedProps.label = field2.label;
-            }
-            if (field1.labelHelpDescription !== field2.labelHelpDescription) {
-              updatedProps.labelHelpDescription = field1.labelHelpDescription;
-            }
-            if (field1.designerOnly !== field2.designerOnly) {
-              updatedProps.designerOnly = field1.designerOnly;
-            }
-            if (field1.isDataField !== field2.isDataField) {
-              updatedProps.isDataField = field1.isDataField;
-            }
-            if (field1.editable !== field2.editable) {
-              updatedProps.editable = field1.editable;
-            }
-            if (field1.hiddenField !== field2.hiddenField) {
-              updatedProps.hiddenField = field1.hiddenField;
-            }
-            if (field1.description !== field2.description) {
-              updatedProps.description = field1.description;
-            }
-      
-            const settings1 = field1.settings;
-            const settings2 = field2.settings;
-            const settingsDiff: any = {};
-      
-            Object.keys(settings1).forEach((key) => {
-              if (settings1[key] !== settings2[key]) {
-                settingsDiff[key] = settings1[key];
-              }
-            });
-      
-            if (Object.keys(settingsDiff).length > 0) {
-              updatedProps.settings = settingsDiff;
-            }
-      
-            if (Object.keys(updatedProps).length > 0) {
-              updated[field1.name] = updatedProps;
-            }
-          }
-        });
-        if(Object.keys(added).length > 0 || Object.keys(updated).length > 0){
-            let result = { added, updated };
-            data[referenceName]= { result }
-            return data;
-        }
-        else{
-            return null;
-        }
-      }
-
-      findTemplateDifferences(obj1: mgmtApi.PageModel, obj2: mgmtApi.PageModel, pageTemplateName: string): { added: any; updated: any } {
-        const added: any = {};
-        const updated: any = {};
-        const data: any = {};
-        
-        if(obj1.doesPageTemplateHavePages !== obj2.doesPageTemplateHavePages){
-            updated.doesPageTemplateHavePages = obj2.doesPageTemplateHavePages;
-        }
-
-        if(obj1.digitalChannelTypeName !== obj2.digitalChannelTypeName){
-            updated.digitalChannelTypeName = obj2.digitalChannelTypeName;
-        }
-        if(obj1.agilityCode !== obj2.agilityCode){
-            updated.agilityCode = obj2.agilityCode;
-        }
-        if(obj1.relativeURL !== obj2.relativeURL){
-            updated.relativeURL = obj2.relativeURL;
-        }
-        if(obj1.previewUrl !== obj2.previewUrl){
-            updated.previewUrl = obj2.previewUrl;
-        }
-
-        // for (const key in obj1) {
-        //   if (obj1.hasOwnProperty(key) && obj2.hasOwnProperty(key)) {
-        //     if (obj1[key] !== obj2[key]) {
-        //       updated[key] = obj2[key];
-        //     }
-        //   }
-        // }
-      
-        // for (const key in obj2) {
-        //   if (obj2.hasOwnProperty(key) && !obj1.hasOwnProperty(key)) {
-        //     added[key] = obj2[key];
-        //   }
-        // }
-      
-        // Compare contentSectionDefinitions
-        const csd1 = obj1.contentSectionDefinitions || [];
-        const csd2 = obj2.contentSectionDefinitions || [];
-      
-        csd1.forEach((csd1Item) => {
-          const csd2Item = csd2.find((item) => item?.pageItemTemplateReferenceName === csd1Item?.pageItemTemplateReferenceName);
-          if (!csd2Item) {
-            added.contentSectionDefinitions = added.contentSectionDefinitions || [];
-            added.contentSectionDefinitions.push(csd1Item);
-          } else {
-            const diff = this.compareObjects(csd1Item, csd2Item);
-            if (Object.keys(diff).length > 0) {
-              updated.contentSectionDefinitions = updated.contentSectionDefinitions || [];
-              updated.contentSectionDefinitions.push(diff);
-            }
-          }
-        });
-      
-        // Compare sharedModules
-        const sharedModules1 = obj1.contentSectionDefinitions?.flatMap((csd) => csd?.sharedModules || []) || [];
-        const sharedModules2 = obj2.contentSectionDefinitions?.flatMap((csd) => csd?.sharedModules || []) || [];
-      
-        sharedModules1.forEach((sm1) => {
-          const sm2 = sharedModules2.find((item) => item?.name === sm1?.name);
-          if (!sm2) {
-            added.sharedModules = added.sharedModules || [];
-            added.sharedModules.push(sm1);
-          } else {
-            const diff = this.compareObjects(sm1, sm2);
-            if (Object.keys(diff).length > 0) {
-              updated.sharedModules = updated.sharedModules || [];
-              updated.sharedModules.push(diff);
-            }
-          }
-        });
-      
-        // Compare defaultModules
-        const defaultModules1 = obj1.contentSectionDefinitions?.flatMap((csd) => csd?.defaultModules || []) || [];
-        const defaultModules2 = obj2.contentSectionDefinitions?.flatMap((csd) => csd?.defaultModules || []) || [];
-      
-        defaultModules1.forEach((dm1) => {
-          const dm2 = defaultModules2.find((item) => item?.title === dm1?.title);
-          if (!dm2) {
-            added.defaultModules = added.defaultModules || [];
-            added.defaultModules.push(dm1);
-          } else {
-            const diff = this.compareObjects(dm1, dm2);
-            if (Object.keys(diff).length > 0) {
-              updated.defaultModules = updated.defaultModules || [];
-              updated.defaultModules.push(diff);
-            }
-          }
-        });
-      
-        if(Object.keys(added).length > 0 || Object.keys(updated).length > 0){
-            let result = { added, updated };
-            data[pageTemplateName]= { result }
-            return data;
-        }
-        else{
-            return null;
-        }
-      }
-
-      compareObjects(obj1: any, obj2: any): any {
-        const diff: any = {};
-      
-        for (const key in obj1) {
-          if (obj1.hasOwnProperty(key) && obj2.hasOwnProperty(key)) {
-            if (obj1[key] !== obj2[key]) {
-              diff[key] = obj2[key];
-            }
-          }
-        }
-      
-        return diff;
-      }
-      
-
-    //   compareModelObjects = (obj1: any, obj2: any, referenceName: string): string => {
-    //     const result: ComparisonResult = {};
-    //     const data: any = {};
-    
-    //     const compareProperties = (field1: mgmtApi.ModelField, field2: mgmtApi.ModelField) => {
-    //         const fieldChanges: ComparisonResult = {};
-    
-    //         for (const key in field1) {
-    //             if (key !== "id" && key !== "lastModifiedDate" && field1[key as keyof mgmtApi.ModelField] !== field2[key as keyof mgmtApi.ModelField]) {
-    //                 fieldChanges[key] = {
-    //                     oldValue: field1[key as keyof mgmtApi.ModelField],
-    //                     newValue: field2[key as keyof mgmtApi.ModelField]
-    //                 };
-    //             }
-    //         }
-    
-    //         return fieldChanges;
-    //     };
-    
-    //     // Compare top-level properties
-    //     const topLevelChanges = compareProperties(obj1, obj2);
-    //     Object.assign(result, topLevelChanges);
-    
-    //     // Compare fields
-    //     const fieldsChanges: ComparisonResult = {
-    //         oldValue: [],
-    //         newValue: []
-    //     };
-    
-    //     for (const field1 of obj1.fields) {
-    //         const field2 = obj2.fields.find((f: mgmtApi.ModelField) => f.name === field1.name);
-    //         if (!field2) {
-    //             fieldsChanges.oldValue.push(field1);
-    //             fieldsChanges.newValue.push(field1); // Add null for missing field in newValue
-    //         } else {
-    //             const fieldChanges = compareProperties(field1, field2);
-    //             if (Object.keys(fieldChanges).length > 0) {
-    //                 fieldsChanges.oldValue.push(field1);
-    //                 fieldsChanges.newValue.push(field2);
-    //             }
-    //         }
-    //     }
-    
-    //     for (const field2 of obj2.fields) {
-    //         const field1 = obj1.fields.find((f: mgmtApi.ModelField) => f.name === field2.name);
-    //         if (!field1) {
-    //             fieldsChanges.newValue.push(field2);
-    //             //fieldsChanges.oldValue.push(null); // Add null for missing field in oldValue
-    //         }
-    //     }
-    
-    //     if (fieldsChanges.oldValue.length > 0 || fieldsChanges.newValue.length > 0) {
-    //         result.fields = fieldsChanges;
-    //     }
-    
-    //     data[referenceName] = {
-    //         result
-    //     } 
-    //     return data;
-    // };
-
-    async compareModelObjects(obj1: any, obj2: any, referenceName: string) {
-        const differences: any = {};
-        const ignoreFields = ['lastModifiedDate', 'fieldID', 'id'];
-        const compareProps = (obj1: any, obj2: any, path: string = '') => {
-          for (const key in obj1) {
-            if (obj1.hasOwnProperty(key) && !ignoreFields.includes(key)) {
-              const newPath = path ? `${path}.${key}` : key;
-              if (typeof obj1[key] === 'object' && obj1[key] !== null && typeof obj2[key] === 'object' && obj2[key] !== null) {
-                compareProps(obj1[key], obj2[key], newPath);
-              } else if (obj1[key] !== obj2[key]) {
-                differences[newPath] = {
-                  oldValue: obj1[key],
-                  newValue: obj2[key],
-                  referenceName: referenceName
-                };
-              }
-            }
-          }
-        };
-      
-        compareProps(obj1, obj2);
-        return differences;
-      }
-
-    async pushGalleries(guid: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-
-        let assetGalleries = this.createBaseGalleries();
-        if(assetGalleries){
-            const progressBar1 = this._multibar.create(assetGalleries.length, 0);
-            progressBar1.update(0, {name : 'Galleries'});
-            let index = 1;
-            for(let i = 0; i < assetGalleries.length; i++){
-                let assetGallery = assetGalleries[i];
-    
-                progressBar1.update(index);
-                index += 1;
-                for(let j = 0; j < assetGallery.assetMediaGroupings.length; j++){
-                    let gallery = assetGallery.assetMediaGroupings[j];
-                    const oldGalleryId = gallery.mediaGroupingID;
-                    try{
-                        let existingGallery = await apiClient.assetMethods.getGalleryByName(guid, gallery.name);
-                        if(existingGallery){
-                            gallery.mediaGroupingID = existingGallery.mediaGroupingID;
-                        }
-                        else{
-                            gallery.mediaGroupingID = 0;
-                        }
-                     let createdGallery = await apiClient.assetMethods.saveGallery(guid, gallery);
-                     this.processedGalleries[oldGalleryId] = createdGallery.mediaGroupingID;
-                    } catch {
-                        gallery.mediaGroupingID = 0;
-                        let createdGallery = await apiClient.assetMethods.saveGallery(guid, gallery);
-                        this.processedGalleries[oldGalleryId] = createdGallery.mediaGroupingID;
-                    }
-                }
-            }
-        }
-       
-    }
-
-    async pushAssets(guid: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let defaultContainer = await apiClient.assetMethods.getDefaultContainer(guid);
-        let fileOperation = new fileOperations();
-
-        let failedAssetsExists = fileOperation.fileExists(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`);
-        let file = failedAssetsExists ? fileOperation.readFile(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/failedAssets/unProcessedAssets.json`): null;
-
-        let unProcessedAssets = JSON.parse(file) as {};
-
-        let assetMedias = this.createBaseAssets();
-
-        if(assetMedias){
-            let medias: mgmtApi.Media[] = [];
-            for(let i = 0; i < assetMedias.length; i++){
-                let assetMedia = assetMedias[i];
-                for(let j = 0; j < assetMedia.assetMedias.length; j++){
-                    let media = assetMedia.assetMedias[j];
-                    if(unProcessedAssets){
-                        if(unProcessedAssets[media.mediaID]){
-                            fileOperation.appendLogFile(`\n Unable to process asset for mediaID ${media.mediaID} for fileName ${media.fileName}.`);
-                        } else{
-                            medias.push(media);
-                        }
-                    }
-                    else{
-                        medias.push(media);
-                    }
-                    
-                }
-            }
-
-        
-            let re = /(?:\.([^.]+))?$/;
-            const progressBar2 = this._multibar.create(medias.length, 0);
-            progressBar2.update(0, {name : 'Assets'});
-
-            let index = 1;
-            for(let i = 0; i < medias.length; i++){
-                let media = medias[i];
-                
-                progressBar2.update(index);
-                index += 1;
-
-                let filePath = this.getFilePath(media.originUrl);
-                filePath = filePath.replace(/%20/g, " ");
-                let folderPath = filePath.split("/").slice(0, -1).join("/");
-                if(!folderPath){
-                    folderPath = '/';
-                }
-                let orginUrl = `${defaultContainer.originUrl}/${filePath}`;
-                const form = new FormData();
-                const file = fs.readFileSync(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/${filePath}`, null);
-                form.append('files',file, media.fileName);
-                let mediaGroupingID = -1;
-                try{
-                    let existingMedia = await apiClient.assetMethods.getAssetByUrl(orginUrl, guid);
-                    
-                    if(existingMedia){
-                        if(media.mediaGroupingID > 0){
-                            mediaGroupingID = await this.doesGalleryExists(guid, media.mediaGroupingName);
-                        }
-                    }
-                    else{
-                        if(media.mediaGroupingID > 0){
-                            mediaGroupingID = await this.doesGalleryExists(guid, media.mediaGroupingName);
-                        }
-                    }
-                    let uploadedMedia = await apiClient.assetMethods.upload(form, folderPath, guid,mediaGroupingID);
-                } catch {
-                    if(media.mediaGroupingID > 0){
-                        mediaGroupingID = await this.doesGalleryExists(guid, media.mediaGroupingName);
-                    }
-                let uploadedMedia = await apiClient.assetMethods.upload(form, folderPath, guid,mediaGroupingID);
-                }
-                    
-            }
-        }
-    }
-
-    async doesGalleryExists(guid: string, mediaGroupingName: string){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let mediaGroupingID = -1;
-        try{
-            let gallery = await apiClient.assetMethods.getGalleryByName(guid, mediaGroupingName);
-            if(gallery){
-                mediaGroupingID = gallery.mediaGroupingID;
-            } else{
-                mediaGroupingID =  -1;
-            }
-        } catch {
-            return -1;
-        }
-        return mediaGroupingID;
-    }
-
-    getFilePath(originUrl: string): string{
-        let url = new URL(originUrl);
-        let pathName = url.pathname;
-        let extractedStr = pathName.split("/")[1];
-        let removedStr = pathName.replace(`/${extractedStr}/`, "");
-
-        return removedStr;
-    }
-
-    async pushInstance(){
-        try{
-            let fileOperation = new fileOperations();
-            fileOperation.createLogFile('logs', 'instancelog');
-            await this.pushGalleries(this._targetGuid);
-            await this.pushAssets(this._targetGuid);
-            let models = this.getBaseModels();
-            if(models){
-
-                let containers = this.getBaseContainers();            
-                let linkedModels = await this.getLinkedModels(models);
-                let normalModels = await this.getNormalModels(models, linkedModels);
-
-                const progressBar3 = this._multibar.create(normalModels.length, 0);
-                progressBar3.update(0, {name : 'Models: Non Linked'});
-                let index = 1;
-
-                for(let i = 0; i < normalModels.length; i++){
-                    let normalModel = normalModels[i];
-                    await this.pushNormalModels(normalModel, this._targetGuid);
-                    progressBar3.update(index);
-                    index += 1;
-                }
-                
-                await this.pushLinkedModels(linkedModels, this._targetGuid);
-                let containerModels = models
-
-                if(containers){
-                    await this.pushContainers(containers, containerModels, this._targetGuid);
-                    let contentItems = await this.getBaseContentItems(this._targetGuid, this._locale);
-                    if(contentItems){
-                        let totalItems = contentItems.length;
-                        let linkedContentItems = await this.getLinkedContent(this._targetGuid, contentItems);                        
-                        let normalContentItems = await this.getNormalContent(this._targetGuid, contentItems, linkedContentItems);
-                        await this.pushNormalContentItems(this._targetGuid, this._locale, normalContentItems);
-                        await this.pushLinkedContentItems(this._targetGuid, this._locale, linkedContentItems);
-                    }
-                    let pageTemplates = await this.createBaseTemplates();
-
-                    if(pageTemplates){
-                        await this.pushTemplates(pageTemplates, this._targetGuid, this._locale);
-                        if(contentItems){
-                            let pages = await this.createBasePages(this._locale);
-                            if(pages){
-                                await this.pushPages(this._targetGuid, this._locale, pages);
-                            }
-                        }
-                    }
-                }
-
-                console.log(ansiColors.green('🚀 Push operation completed successfully.'));
-                homePrompt();
-                // this._multibar.stop();
-            }
-            else{
-                fileOperation.appendLogFile(`\n Nothing else to clone/push to the target instance as there are no Models present in the source Instance.`);
-                this._multibar.stop();
-            }
-            
-        } catch {
-
-        }
-   }
-
-
-async updateContentItems(guid: string, locale: string, selectedContentItems: string) {
-    const apiClient = new mgmtApi.ApiClient(this._options);
-    const fileOperation = new fileOperations();
-    const contentItemsArray: mgmtApi.ContentItem[] = [];
-
-    fileOperation.createLogFile('logs', 'instancelog');
-
-    console.log('Updating content items...', selectedContentItems.split(', '));
-    const contentItemArr = selectedContentItems.split(',');
-
-    if (contentItemArr && contentItemArr.length > 0) {
-        const validBar1 = this._multibar.create(contentItemArr.length, 0);
-        validBar1.update(0, { name: 'Updating items' });
-
-        let index = 1;
-        const successfulItems = [];
-        const notOnDestination = [];
-        const notOnSource = [];
-        const modelMismatch = [];
-
-        for (let i = 0; i < contentItemArr.length; i++) {
-            const contentItemId = parseInt(contentItemArr[i], 10);
-            index += 1;
-
-            try {
-                await apiClient.contentMethods.getContentItem(contentItemId, guid, locale);
-            } catch {
-                notOnDestination.push(contentItemId);
-                this.skippedContentItems[contentItemId] = contentItemId.toString();
-                fileOperation.appendLogFile(`\n There was a problem reading content item ID ${contentItemId}`);
-                continue;
-            }
-
-            try {
-                const file = fileOperation.readFile(`agility-files/${locale}/item/${contentItemId}.json`);
-                const contentItem = JSON.parse(file) as mgmtApi.ContentItem;
 
                 try {
-                    const containerFile = fileOperation.readFile(`agility-files/containers/${this.camelize(contentItem.properties.referenceName)}.json`);
-                    const container = JSON.parse(containerFile) as mgmtApi.Container;
-
-                    const modelId = container.contentDefinitionID;
-                    const modelFile = fileOperation.readFile(`agility-files/models/${modelId}.json`);
-                    const model = JSON.parse(modelFile) as mgmtApi.Model;
-
-                    const currentModel = await apiClient.modelMethods.getContentModel(modelId, guid);
-
-                    const modelFields = model.fields.map(field => ({ name: field.name, type: field.type }));
-                    const currentModelFields = currentModel.fields.map(field => ({ name: field.name, type: field.type }));
-
-                    const missingFields = modelFields.filter(field => !currentModelFields.some(currentField => currentField.name === field.name && currentField.type === field.type));
-                    const extraFields = currentModelFields.filter(currentField => !modelFields.some(field => field.name === currentField.name && field.type === currentField.type));
-
-                    if (missingFields.length > 0) {
-                        console.log(`Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                        fileOperation.appendLogFile(`\n Missing fields in local model: ${missingFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                    }
-
-                    if (extraFields.length > 0) {
-                        console.log(`Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                        fileOperation.appendLogFile(`\n Extra fields in local model: ${extraFields.map(field => `${field.name} (${field.type})`).join(', ')}`);
-                    }
-
-                    if (!missingFields.length && !extraFields.length) {
-                        try {
-                            await apiClient.contentMethods.saveContentItem(contentItem, guid, locale);
-                        } catch {
-                            this.skippedContentItems[contentItemId] = contentItemId.toString();
-                            fileOperation.appendLogFile(`\n Unable to update content item ID ${contentItemId}`);
-                            continue;
-                        }
-
-                        contentItemsArray.push(contentItem);
-                        successfulItems.push(contentItemId);
-                    } else {
-                        modelMismatch.push(contentItemId);
-                        fileOperation.appendLogFile(`\n Model mismatch for content item ID ${contentItemId}`);
-                        continue;
-                    }
-                } catch (err) {
-                    console.log('Container - > Error', err);
-                    this.skippedContentItems[contentItemId] = contentItemId.toString();
-                    fileOperation.appendLogFile(`\n Unable to find a container for content item ID ${contentItemId}`);
-                    continue;
+                    page.parentPageID = targetParent.pageID;
+                    await this.processPage(page, guid, locale, true);
+                    processedPages++;
+                } catch (error) {
+                    console.log(`✗ Failed to process child page: ${page.name}`, error);
+                    failedPages++;
                 }
-            } catch {
-                notOnSource.push(contentItemId);
-                this.skippedContentItems[contentItemId] = contentItemId.toString();
-                fileOperation.appendLogFile(`\n There was a problem reading agility-files/${locale}/item/${contentItemId}.json`);
-                continue;
+            }
+        }
+
+        console.log(ansiColors.yellow(`✓ Processed ${processedPages}/${totalPages} pages (${failedPages} failed)`));
+    }
+
+    private async processPage(page: mgmtApi.PageItem, guid: string, locale: string, isChildPage: boolean) {
+        let apiClient = new mgmtApi.ApiClient(this._options);
+
+        console.log('\n=== Processing Page ===');
+        console.log(`Page Name: ${page.name}`);
+        console.log(`Page ID: ${page.pageID}`);
+        console.log(`Template Name: ${page.templateName}`);
+        console.log(`Is Child Page: ${isChildPage}`);
+
+        try {
+            // Get the sitemap first
+            const sitemap = await apiClient.pageMethods.getSitemap(guid, locale);
+
+            // console.log('sitemap', sitemap);
+            let correctPageID = -1;
+            let channelID = -1;
+
+            // Find the page in the sitemap
+            if (sitemap && sitemap.length > 0) {
+                const websiteChannel = sitemap.find(channel => channel.digitalChannelTypeName === 'Website');
+                if (websiteChannel) {
+                    channelID = websiteChannel.digitalChannelID;
+                    console.log('channelID', channelID);
+                    const pageInSitemap = websiteChannel.pages.find(p => p.pageName === page.name);
+                    if (pageInSitemap) {
+                        correctPageID = pageInSitemap.pageID;
+                        console.log(`✓ Found page in sitemap - ID: ${correctPageID}, Channel ID: ${channelID}`);
+                    }
+                }
             }
 
-            validBar1.update(index);
+            // Get the page template from reference mapper
+            // console.log(`Looking up template in reference mapper - Template Name: ${page.templateName}`);
+            let templateRef = this._referenceMapper.getMappingByKey<mgmtApi.PageModel>('template', 'pageTemplateName', page.templateName);
+            // console.log('Template reference lookup result:', templateRef);
+            
+            if (!templateRef) {
+                console.log(`✗ Template not found in reference mapper for page: ${page.name} (Template: ${page.templateName})`);
+                // Log all available template mappings for debugging
+                // const allTemplateMappings = this._referenceMapper.getRecordsByType('template');
+                // console.log('Available template mappings:', allTemplateMappings);
+                return;
+            }
+
+            const { source, target:targetTemplate } = templateRef;
+            if (!targetTemplate) {
+                console.log(`✗ Template not processed for page: ${page.name} (Template: ${page.templateName})`);
+                return;
+            }
+
+            page.pageTemplateID = targetTemplate.pageTemplateID;
+            console.log(`✓ Template found and mapped - ID: ${page.pageTemplateID}`);
+
+            // Get the page zones
+            let zones = page.zones;
+            let mappingSuccessful = true; // Flag to track content mapping
+            if (!zones) {
+                console.log(`✗ No zones found for page: ${page.name}`);
+                mappingSuccessful = false; // Or handle as needed
+            }
+
+            // Process each zone *and* map content IDs directly on the page object
+            if (mappingSuccessful) {
+                for (const [zoneName, zoneContent] of Object.entries(zones)) {
+                    // Process each module in the zone
+                    for (const module of zoneContent) {
+                        
+                        if ('contentID' in module.item || 'contentId' in module.item) {
+                            const originalContentId = module.item.contentId || module.item.contentID;
+                            console.log(`\nModule:`, module);
+                            console.log(`Original Content ID: ${originalContentId}`);
+                            
+                            const contentRef = this._referenceMapper.getContentMappingById<mgmtApi.ContentItem>(originalContentId);
+                            
+                            if (contentRef?.target) {
+                                module.item.contentID = contentRef.target.contentID; // Update directly
+                                delete module.item.contentId; // Clean up old property if exists
+                                console.log(` ✓ Mapped Content ID: ${contentRef.target.contentID}`);
+                            } else {
+                                console.log(` ✗ Content ${originalContentId} not found in reference mapper for page ${page.name}`);
+                                mappingSuccessful = false;
+                                // Don't break here, log all missing items
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If any content mapping failed, abort processing this page
+            if (!mappingSuccessful) {
+                console.log(` ✗ Aborting page ${page.name} due to missing content item mappings.`);
+                return; 
+            }
+
+            // Check if page already exists (using previously determined correctPageID)
+            let existingPage;
+            let pageExists = false;
+            try {
+                // Try to get the page by ID if we have it
+                if (correctPageID > 0) {
+                    existingPage = await apiClient.pageMethods.getPage(correctPageID, guid, locale);
+
+                    if(existingPage && existingPage.visible.sitemap !== null){
+                        console.log(`\n✓ Page exists - ${ansiColors.green('Source')}: ${page.name} (ID: ${page.pageID}), ${ansiColors.green('Target')}: ${existingPage.name} (ID: ${existingPage.pageID})`);
+                        pageExists = true;
+                    }
+                }
+            } catch (error) {
+                console.log(`\nNo existing page found for ID: ${correctPageID}`);
+            }
+
+            // Create the page payload using the *modified* page object
+            const pagePayload: mgmtApi.PageItem = {
+                ...page, // Spread the pre-modified page object
+                pageID: pageExists ? existingPage.pageID : -1, // Use -1 for new page creation
+                path: page.path || `/${page.name.toLowerCase()}`,
+                securePage: page.securePage || false,
+                parentPageID: page.parentPageID || -1,
+                placeBeforePageItemID: page.placeBeforePageItemID || -1,
+                channelID: -1, // Force -1 like old implementation
+                pageTemplateID: targetTemplate.pageTemplateID // Use mapped template ID
+             };
+
+            // Save the page
+            const savePageResponse = await apiClient.pageMethods.savePage(pagePayload, guid, locale, pagePayload.parentPageID, pagePayload.placeBeforePageItemID);
+            console.log('Save Page->', savePageResponse);
+            // console.log(pageIdArray)
+            const savePageResponse2 = await apiClient.pageMethods.savePage(pagePayload, guid, locale, pagePayload.parentPageID, pagePayload.placeBeforePageItemID, true);
+            console.log('Save Page 2->', savePageResponse2);
+
+            
+            // if (pageIdArray && pageIdArray[0] > 0) {
+            //     const newPage = {
+            //         ...pagePayload,
+            //         pageID: pageIdArray[0]
+            //     } as mgmtApi.PageItem;
+      
+            //     this._referenceMapper.addRecord('page', page, newPage); // Use original page for source key
+            //     console.log(`\n✓ ${isChildPage ? 'Child ' : ''}Page ${page.name} ${pageExists ? 'Updated' : 'Created'} - Target ID: ${newPage.pageID}`);
+      
+            // } else {
+            //     console.log('\n✗ Failed to create/update page');
+            //     console.log('Page Payload:', JSON.stringify(pagePayload, null, 2));
+            // }
+        } catch (error) {
+            console.log(`\n✗ Error processing page ${page.name}:`, error);
+            if (error.response) {
+                console.log('API Response:', error.response.data);
+            }
+        }
+    }
+
+    private updateAssetUrls(contentItem: mgmtApi.ContentItem) {
+        const processValue = (value: any): any => {
+            if (Array.isArray(value)) {
+                return value.map(item => processValue(item));
+            } else if (value && typeof value === 'object') {
+                const processed = { ...value };
+                for (const [key, val] of Object.entries(processed)) {
+                    if (key === 'url' && typeof val === 'string') {
+                        const assetRef = this._referenceMapper.getMapping<mgmtApi.Media>('asset', 'originUrl', val);
+                        if (assetRef && assetRef?.target) {
+                            processed[key] = assetRef.target.originUrl;
+                        }
+                    
+                    } else {
+                        processed[key] = processValue(val);
+                    }
+                }
+                return processed;
+            }
+            return value;
+        };
+
+        // Process fields
+        const processedFields: { [key: string]: any } = {};
+        for (const [fieldName, fieldValue] of Object.entries(contentItem.fields)) {
+            processedFields[fieldName] = processValue(fieldValue);
         }
 
         return {
-            contentItemsArray,
-            successfulItems,
-            notOnDestination,
-            notOnSource,
-            modelMismatch
+            ...contentItem,
+            fields: processedFields
         };
     }
-}
+
+    // async pushNormalContentItems(contentItems: mgmtApi.ContentItem[], guid: string) {
+    //     let totalContent = contentItems.length;
+    //     let processedContent = 0;
+    //     let failedContent = 0;
+
+    //     for (const contentItem of contentItems) {
+    //         let apiClient = new mgmtApi.ApiClient(this._options);
+    //         try {
+    //             const referenceName = contentItem.properties.referenceName;
+                
+    //             // Get the processed container using the reference mapper
+    //             let refMap = this._referenceMapper.getMapping<mgmtApi.Container>('container', 'referenceName', referenceName);
+                
+    //             if (!refMap) {
+    //                 console.log(`✗ Container not found in reference mapper for: ${referenceName}`);
+    //                 failedContent++;
+    //                 continue;
+    //             }
+
+    //             const { target:targetContainer } = refMap;
+
+    //             // Update asset URLs in content fields
+    //             let processedContentItem = this.updateAssetUrls(contentItem);
+
+    //             // console.log('processedContentItem', processedContentItem);
+    //             // First try to get the content item from the target instance
+    //             let existingContentItem;
+
+    //             try {
+    //                 existingContentItem = await apiClient.contentMethods.getContentItem(contentItem.contentID, this._targetGuid, this._locale);
+    //                 // processedContentItem = existingContentItem;
+    //                 // processedContentItem.contentID = existingContentItem.contentID;
+    //             } catch (error) {
+    //                 // Content item doesn't exist, we'll create it
+    //             }
+
+    //             // Create or update content item
+    //             let contentPayload;
+    //             try {
+    //                 // Ensure we're using the processed content item with updated URLs
+    //                 contentPayload = {
+    //                     ...existingContentItem ? processedContentItem : processedContentItem,
+    //                     contentID: existingContentItem ? existingContentItem.contentID : -1,
+    //                     properties: {
+    //                         ...existingContentItem ? existingContentItem.properties : processedContentItem.properties,
+    //                         referenceName: existingContentItem ? existingContentItem.properties.referenceName : targetContainer.referenceName
+    //                     }
+    //                 };
+
+
+
+    //                 // console.log('contentPayload', contentPayload);
+
+
+    //                 const contentIdArray = await apiClient.contentMethods.saveContentItem(contentPayload, guid, this._locale);
+                    
+                    
+    //                 if (contentIdArray && contentIdArray[0] > 0) {
+
+    //                     const newContentItem = {
+    //                         ...contentPayload,
+    //                         contentID: contentIdArray[0]
+    //                     } as mgmtApi.ContentItem;
+    //                     // Update both base and specialized reference mappings
+    //                     this._referenceMapper.addRecord('content', contentItem, newContentItem);
+    //                     console.log(`✓ Normal Content Item ${existingContentItem ? 'Updated' : 'Created'} ${ansiColors.green('Source:')} ${contentItem.properties.referenceName} (ID: ${contentItem.contentID}) ${ansiColors.green('Target:')} ${newContentItem.properties.referenceName} (ID: ${contentIdArray[0]})`);
+    //                     processedContent++;
+    //                 } else {
+    //                     console.log(`✗ Failed to ${existingContentItem ? 'update' : 'create'} normal content item ${contentItem.properties.referenceName}`);
+    //                     failedContent++;
+    //                 }
+    //             } catch (error) {
+    //                 console.log(`✗ Error ${existingContentItem ? 'updating' : 'creating'} normal content item ${contentItem.properties.referenceName}:`, error);
+    //                 if (error.response) {
+    //                     console.log('API Response:', error.response.data);
+    //                 }
+    //                 failedContent++;
+    //             }
+    //         } catch (error) {
+    //             console.log(`✗ Error processing normal content item ${contentItem.properties.referenceName}:`, error);
+    //             if (error.response) {
+    //                 console.log('API Response:', error.response.data);
+    //             }
+    //             failedContent++;
+    //         }
+    //     }
+    //     console.log(ansiColors.yellow(`✓ Processed ${processedContent}/${totalContent} normal content items (${failedContent} failed)`));
+    // }
+
+    private isLinkedModel(model: mgmtApi.Model): boolean {
+        return model.fields.some(field => field.type === 'Content');
+    }
+
+    private async pushGalleries(guid: string): Promise<void> {
+        const galleries = this.getBaseGalleries();
+        if (!galleries) return;
+
+        for (const gallery of galleries) {
+            try {
+                for (const mediaGrouping of gallery.assetMediaGroupings) {
+                    const existingGallery = await this._apiClient.assetMethods.getGalleryByName(guid, mediaGrouping.name);
+                    if (existingGallery) {
+                        console.log(`Gallery ${mediaGrouping.name} already exists, skipping...`);
+                        continue;
+                    }
+                    mediaGrouping.mediaGroupingID = 0;
+                    const savedGallery = await this._apiClient.assetMethods.saveGallery(guid, mediaGrouping);
+                    console.log(`✓ Gallery created: ${mediaGrouping.name}`);
+                }
+            } catch (error) {
+                console.error(`Error processing gallery:`, error);
+            }
+        }
+    }
+
+    private async pushAssets(guid: string): Promise<void> {
+        const assets = this.getBaseAssets();
+        if (!assets) return;
+
+        // Get default container for URL construction
+        const defaultContainer = await this._apiClient.assetMethods.getDefaultContainer(this._targetGuid);
+        
+        let totalAssets = 0;
+        let processedAssets = 0;
+        
+        for (const asset of assets) {
+            try {
+                for (const media of asset.assetMedias) {
+                    totalAssets++;
+                    try {
+                        // Construct proper file path and URL
+                        const filePath = this.getFilePath(media.originUrl).replace(/%20/g, " ");
+                        const folderPath = filePath.split("/").slice(0, -1).join("/") || '/';
+                        const originUrl = `${defaultContainer.originUrl}/${filePath}`;
+
+                        // Check if asset exists by URL using the reference mapper's checkExistingAsset method
+                        const existingMedia = await this._referenceMapper.checkExistingAsset(originUrl, this._apiClient, this._targetGuid);
+
+                        if (existingMedia) {
+                            // Store the mapping between source and target asset URLs using reference mapper
+                            this._referenceMapper.addRecord('asset', media, existingMedia);
+                            // Extract just the path after the domain
+                            const sourcePath = media.originUrl.split('/').slice(3).join('/');
+                            const targetPath = existingMedia.originUrl.split('/').slice(3).join('/');
+                            console.log(`✓ Asset exists - ${ansiColors.green('Source')}: ${sourcePath}, ${ansiColors.green('Target')}: ${targetPath} (ID: ${existingMedia.mediaID})`);
+                            
+                            processedAssets++;
+                            continue;
+                        }
+
+                        // Handle gallery if present
+                        let mediaGroupingID = -1;
+                        if (media.mediaGroupingID > 0) {
+                            try {
+                                const gallery = await this._apiClient.assetMethods.getGalleryByName(this._targetGuid, media.mediaGroupingName);
+                                if (gallery) {
+                                    mediaGroupingID = gallery.mediaGroupingID;
+                                }
+                            } catch (error) {
+                                // Gallery not found, will upload without gallery
+                            }
+                        }
+
+                        // Upload the asset
+                        const form = new FormData();
+                        const file = fs.readFileSync(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/${filePath}`, null);
+                        form.append('files', file, media.fileName);
+                        const uploadedMedia = await this._apiClient.assetMethods.upload(form, folderPath, this._targetGuid, mediaGroupingID);
+                        
+                        // Store the mapping between source and target asset using reference mapper
+                        this._referenceMapper.addRecord('asset', media, uploadedMedia);
+                        console.log(`✓ Asset uploaded: ${media.fileName}`);
+                        processedAssets++;
+                    } catch (error) {
+                        console.error(`Error processing asset ${media.fileName}:`, error);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error processing asset group:`, error);
+            }
+        }
+        console.log(ansiColors.yellow(`✓ Processed ${processedAssets}/${totalAssets} assets`));
+    }
+
+    private getFilePath(originUrl: string): string {
+        const url = new URL(originUrl);
+        const pathName = url.pathname;
+        const extractedStr = pathName.split("/")[1];
+        return pathName.replace(`/${extractedStr}/`, "");
+    }
+
+    private camelize(str: string): string {
+        return str.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, function(match, index) {
+            if (+match === 0) return ""; // or if (/\s+/.test(match)) for white space
+            return index === 0 ? match.toLowerCase() : match.toUpperCase();
+        });
+    }
+
+    async pushLinkedContentItems(contentItems: mgmtApi.ContentItem[], guid: string) {
+        let totalContent = contentItems.length;
+        let processedContent = 0;
+        let failedContent = 0;
+        let fileOperation = new fileOperations();
+
+        for (let contentItem of contentItems) {
+
+            const mappedContentItem = await mapContentItem(contentItem, this._referenceMapper);
+            console.log('mappedContentItem', mappedContentItem);
+
+            let apiClient = new mgmtApi.ApiClient(this._options);
+            try {
+                const referenceName = contentItem.properties.referenceName;
+                
+                // Get the processed container using the reference mapper
+                let containerRef = this._referenceMapper.getMapping<mgmtApi.Container>('container', 'referenceName', referenceName);
+                
+                if (!containerRef) {
+                    console.log(`✗ Container not found in reference mapper for: ${referenceName}`);
+                    failedContent++;
+                    continue;
+                }
+
+                const { source, target:targetContainer } = containerRef;
+                // contentItem.contentID = targetContainer.contentDefinitionID;
+
+                // Process content item URLs and fetch any missing assets
+                contentItem = this.updateAssetUrls(contentItem);
+
+                // Get the model to process linked content fields
+                let model;
+                try {
+                    model = await apiClient.modelMethods.getContentModel(targetContainer.contentDefinitionID, this._targetGuid);
+                } catch (error) {
+                    console.log(`✗ Error getting model for content item ${referenceName}:`, error);
+                    failedContent++;
+                    continue;
+                }
+
+                // Process linked content fields
+                for (const field of model.fields) {
+                    const fieldName = this.camelize(field.name);
+                    const fieldVal = contentItem.fields[fieldName];
+                    
+                    if (fieldVal && field.type === 'Content') {
+                        const settings = field.settings || {};
+
+                        // Handle LinkeContentDropdownValueField
+                        if (settings['LinkeContentDropdownValueField'] && settings['LinkeContentDropdownValueField'] !== 'CREATENEW') {
+                            const linkedField = this.camelize(settings['LinkeContentDropdownValueField']);
+                            const linkedContentIds = contentItem.fields[linkedField];
+                            let newLinkedContentIds = '';
+
+                            if (linkedContentIds) {
+                                const splitIds = linkedContentIds.split(',');
+                                for (const id of splitIds) {
+                                    if (this.skippedContentItems[id]) {
+                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                        fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                        continue;
+                                    }
+                                    if (this.processedContentIds[id]) {
+                                        const newSortId = this.processedContentIds[id].toString();
+                                        newLinkedContentIds = newLinkedContentIds ? `${newLinkedContentIds},${newSortId}` : newSortId;
+                                    } else {
+                                        try {
+                                            const file = fileOperation.readFile(`agility-files/${this._locale}/item/${id}.json`);
+                                            contentItem = null;
+                                            break;
+                                        } catch {
+                                            this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                            this.skippedContentItems[id] = 'OrphanRef';
+                                            fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}.`);
+                                            continue;
+                                        }
+                                    }
+                                }
+                                if (newLinkedContentIds) {
+                                    contentItem.fields[linkedField] = newLinkedContentIds;
+                                }
+                            }
+                        }
+
+                        // Handle SortIDFieldName
+                        if (settings['SortIDFieldName'] && settings['SortIDFieldName'] !== 'CREATENEW') {
+                            const sortField = this.camelize(settings['SortIDFieldName']);
+                            const sortContentIds = contentItem.fields[sortField];
+                            let newSortContentIds = '';
+
+                            if (sortContentIds) {
+                                const splitIds = sortContentIds.split(',');
+                                for (const id of splitIds) {
+                                    if (this.skippedContentItems[id]) {
+                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                        fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                        continue;
+                                    }
+                                    if (this.processedContentIds[id]) {
+                                        const newSortId = this.processedContentIds[id].toString();
+                                        newSortContentIds = newSortContentIds ? `${newSortContentIds},${newSortId}` : newSortId;
+                                    } else {
+                                        try {
+                                            const file = fileOperation.readFile(`agility-files/${this._locale}/item/${id}.json`);
+                                            contentItem = null;
+                                            break;
+                                        } catch {
+                                            this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                            this.skippedContentItems[id] = 'OrphanRef';
+                                            fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}.`);
+                                            continue;
+                                        }
+                                    }
+                                }
+                                if (newSortContentIds) {
+                                    contentItem.fields[sortField] = newSortContentIds;
+                                }
+                            }
+                        }
+
+                        // Handle contentid and referencename
+                        if (typeof fieldVal === 'object') {
+                            if ('contentid' in fieldVal) {
+                                const linkedContentId = fieldVal.contentid;
+                                if (this.skippedContentItems[linkedContentId]) {
+                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                    continue;
+                                }
+                                if (this.processedContentIds[linkedContentId]) {
+                                    try {
+                                        const file = fileOperation.readFile(`agility-files/${this._locale}/item/${linkedContentId}.json`);
+                                        const extractedContent = JSON.parse(file) as mgmtApi.ContentItem;
+                                        contentItem.fields[fieldName] = extractedContent.properties.referenceName;
+                                    } catch {
+                                        contentItem = null;
+                                        break;
+                                    }
+                                }
+                            }
+                            if ('referencename' in fieldVal) {
+                                const refName = fieldVal.referencename;
+                                try {
+                                    const container = await apiClient.containerMethods.getContainerByReferenceName(refName, this._targetGuid);
+                                    if (!container) {
+                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                        fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                        continue;
+                                    }
+                                    if ('sortids' in fieldVal) {
+                                        contentItem.fields[fieldName].referencename = fieldVal.referencename;
+                                    } else {
+                                        contentItem.fields[fieldName] = fieldVal.referencename;
+                                    }
+                                } catch {
+                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
+                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!contentItem) {
+                    continue;
+                }
+
+
+
+
+                // console.log('Content Item:',contentItem)
+                // Create or update content item
+                let contentPayload;
+
+
+
+/// this won't ever work because the contentID is not the same as the contentID in the payload
+// what we need to do is lookup the container this is going into, and get a list of the contentIDs
+
+
+                // const existingContentItem = await this._apiClient.contentMethods.getContentItem(contentItem.contentID, this._targetGuid, this._locale);
+                // console.log('existingContentItem:',existingContentItem)
+
+
+                try {
+                    // Update asset URLs in content fields
+                    const processedContentItem = this.updateAssetUrls(contentItem);
+
+
+                    // console.log('Processed Content Item:',processedContentItem)
+                    contentPayload = {
+                        ...processedContentItem,
+                        // contentID: existingContentItem ? existingContentItem.contentID : -1,
+                        properties: {
+                            ...processedContentItem.properties,
+                            referenceName: targetContainer.referenceName
+                        }
+                    };
+
+                    // Update any remaining URLs in the payload
+                    contentPayload = this.updateAssetUrls(contentPayload);
+
+
+                    // theres a couple issues I see in the payload, which is in fields > category > contentid
+                    // this needs to be mapped back to what the new contentID
+                    // for example 110 is actually  453 of the normal content items
+
+                    // there is also a categoryID, which is another normal content item, but as a string
+                    // 109 is actually 471
+
+                    console.log('Content Payload:',contentPayload)
+
+                    const contentIdArray = await apiClient.contentMethods.saveContentItem(contentPayload, this._targetGuid, this._locale);
+                    console.log('Content ID Array:',contentIdArray)
+                    if (contentIdArray && contentIdArray[0] > 0) {
+                        const newContentItem = {
+                            ...contentPayload,
+                            contentID: contentIdArray[0]
+                        } as mgmtApi.ContentItem;
+                        // Update both base and specialized reference mappings
+                        this._referenceMapper.addRecord('content', contentItem, newContentItem);
+                        console.log(`✓ Linked content item created - Source: ${contentItem.properties.referenceName} (ID: ${contentItem.contentID}), Target: ${newContentItem.properties.referenceName} (ID: ${newContentItem.contentID})`);
+                        processedContent++;
+                    } else {
+                        console.log(`✗ Failed to create linked content item ${contentItem.properties.referenceName}`);
+                        failedContent++;
+                    }
+                } catch (error) {
+                    console.log(`✗ Error creating/updating linked content item ${contentItem.properties.referenceName}:`, error);
+                    if (error.response) {
+                        console.log('API Response:', error.response.data);
+                    }
+                    failedContent++;
+                }
+            } catch (error) {
+                console.log(`✗ Error processing linked content item ${contentItem.properties.referenceName}:`, error);
+                if (error.response) {
+                    console.log('API Response:', error.response.data);
+                }
+                failedContent++;
+            }
+        }
+        console.log(ansiColors.yellow(`✓ Processed ${processedContent}/${totalContent} linked content items (${failedContent} failed)`));
+    }
+
+    private async processLinkedContentFields(contentItem: mgmtApi.ContentItem, path: string): Promise<void> {
+        // Get all linked content items
+        const linkedContentItems: mgmtApi.ContentItem[] = [];
+        
+        // Check each field for linked content
+        Object.entries(contentItem.fields).forEach(([fieldName, fieldValue]) => {
+            if (typeof fieldValue === 'string' && fieldValue.includes(',')) {
+                const contentIds = fieldValue.split(',').map(id => id.trim());
+                contentIds.forEach(contentId => {
+                    if (!isNaN(Number(contentId))) {
+                        const contentRef = this._referenceMapper.getMapping<mgmtApi.ContentItem>('content', 'contentID', Number(contentId));
+                        if (contentRef?.source) {
+                            linkedContentItems.push(contentRef.source);
+                        }
+                    }
+                });
+            } else if (typeof fieldValue === 'object' && fieldValue !== null && 'contentid' in fieldValue) {
+                const contentRef = this._referenceMapper.getMapping<mgmtApi.ContentItem>('content', 'contentID', fieldValue.contentid);
+                if (contentRef?.source) {
+                    linkedContentItems.push(contentRef.source);
+                }
+            }
+        });
+
+        // Add linked content items to reference mapper
+        for (const linkedContentItem of linkedContentItems) {
+            this._referenceMapper.addRecord('content', linkedContentItem, null);
+        }
+    }
 }

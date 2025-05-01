@@ -91,6 +91,7 @@ export class Auth {
   }
 
   determineBaseUrl(guid?: string, userBaseUrl: string = null): string {
+
     if (userBaseUrl) {
       return userBaseUrl;
     }
@@ -195,7 +196,7 @@ export class Auth {
           const expiresAt = issuedAt + token.expires_in * 1000;
 
           if (Date.now() < expiresAt) {
-            logReplace(ansiColors.green(`\r● Authenticated to ${env === 'prod' ? 'Agility': env} servers.\n`));
+            console.log(ansiColors.green(`\r● Authenticated to ${env === 'prod' ? 'Agility': env} servers.\n`));
             return true;
           } else {
             console.log("Existing token has expired. Starting re-authentication...");
@@ -222,7 +223,7 @@ export class Auth {
 
           if (token && token.access_token && token.expires_in && token.timestamp) {
             // Store token in keytar
-            logReplace(ansiColors.green(`\r🔑 Authenticated to ${env} servers.\n`));
+            console.log(ansiColors.green(`\r🔑 Authenticated to ${env} servers.\n`));
             console.log("----------------------------------\n");
 
             await keytar.setPassword(SERVICE_NAME, key, JSON.stringify(token));
@@ -370,14 +371,19 @@ export class Auth {
       });
 
       if (!response.ok) {
-        throw new Error("Network response was not ok");
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data: serverUser = await response.json();
+      
+      if (!data || !data.websiteAccess) {
+        throw new Error("Invalid user data received");
+      }
+      
       return data;
     } catch (error) {
-      // console.error('Fetch error:', error);
-      return null;
+      console.error('Error fetching user:', error);
+      throw new Error("Failed to get user data. Please try logging in again.");
     }
   }
 

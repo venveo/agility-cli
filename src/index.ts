@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// Only disable SSL verification for development/local environments
+// if (process.env.NODE_ENV === 'development' || process.env.LOCAL) {
+//     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// }
+
 
 import * as yargs from "yargs";
 import { Auth } from "./auth";
@@ -30,6 +35,9 @@ import { syncNew } from "./sync_new";
 import { assetNew } from "./asset_new";
 import { containerNew } from "./container_new";
 import { modelNew } from "./model_new";
+import Clean from "./prompts/instances/clean";
+import { instanceSelector } from "./prompts/instances/instance-list";
+import { localePrompt } from "./prompts/locale-prompt";
 
 let auth: Auth;
 export let forceDevMode: boolean = false;
@@ -38,6 +46,13 @@ export let localServer: string
 export let token: string = null;
 
 
+// Configure SSL verification based on CLI mode
+function configureSSL() {
+    if (forceLocalMode) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        console.warn('\nWarning: SSL certificate verification is disabled for development/local mode');
+    }
+}
 
 let options: mgmtApi.Options;
 
@@ -53,6 +68,11 @@ yargs.command({
       type: "boolean",
       default: false,
     },
+    local: {
+      describe: "Enable local mode",
+      type: "boolean",
+      default: false,
+    },
   },
   handler: async function (argv) {
     let auth = new Auth();
@@ -65,37 +85,48 @@ yargs.command({
       forceLocalMode = true;
     }
 
+    configureSSL();
+
     const isAuthorized = await auth.checkAuthorization();
     if(!isAuthorized) {
       return;
     }
-
-    // Only run homePrompt if no other commands are specified
-    if (process.argv.length <= 2) {
-      const envCheck = auth.checkForEnvFile();
     
-      if (envCheck.hasEnvFile && envCheck.guid) {
+      const envCheck = auth.checkForEnvFile();
+      if (envCheck.hasEnvFile && envCheck.guid && !forceLocalMode && !forceDevMode) {
+        try {
+          let user = await auth.getUser(envCheck.guid);
+          console.log('User:',user)
+          let currentWebsite = user.websiteAccess.find((website: websiteListing) => website.guid === envCheck.guid);
+          
+          if (!currentWebsite) {
+            console.error('No matching website found for the provided GUID');
+            return;
+          }
 
-        let user = await auth.getUser(envCheck.guid);
-        let currentWebsite:websiteListing = user.websiteAccess.find((website: websiteListing) => website.guid === envCheck.guid);
-        // If we found a GUID in an env file, we can go right to instancePrompt
-        const instance: AgilityInstance = {
-          guid: envCheck.guid,
-          previewKey: '',
-          fetchKey: '',
-          websiteDetails: currentWebsite
-        };
+          const instance: AgilityInstance = {
+            guid: envCheck.guid,
+            previewKey: '',
+            fetchKey: '',
+            websiteDetails: currentWebsite
+          };
 
-        console.log('------------------------------------------------');
-        console.log(colors.green('●'), colors.green(`${currentWebsite.displayName}`), colors.white(`${instance.guid}`));
-        console.log('------------------------------------------------');
-      
-        await instancesPrompt(instance, null);
+          console.log('------------------------------------------------');
+          console.log(colors.green('●'), colors.green(`${currentWebsite.displayName}`), colors.white(`${instance.guid}`));
+          console.log('------------------------------------------------');
+        
+          await instancesPrompt(instance, null);
+        } catch (error) {
+          console.error('Error:', error.message);
+          console.log('Please try logging in again with: agility login');
+        }
       } else {
         // If no env file or no GUID found, go to homePrompt
         homePrompt();
       }
-    }
+    // } else {
+    //   console.log('Other commands specified, skipping homePrompt');
+    // }
   },
 });
 
@@ -118,11 +149,76 @@ yargs.command({
 yargs.command({
   command: "logout",
   describe: "Log out of Agility.",
-  handler: async function () {
+  builder: {
+    dev: {
+      describe: "Logout from developer mode",
+      type: "boolean",
+      default: false,
+    },
+    local: {
+      describe: "Logout from local mode",
+      type: "boolean",
+      default: false,
+    }
+  },
+  handler: async function (argv) {
     let auth = new Auth();
+    if (argv.dev) {
+      forceDevMode = true;
+    }
+    if (argv.local) {
+      forceLocalMode = true;
+    }
     await auth.logout();
   },
 });
+
+yargs.command({
+    command: "clean",
+    describe: "Scrub all the data out of an instance",
+    handler: async function (argv) {
+
+        forceLocalMode = true;
+
+        configureSSL();
+        let auth = new Auth();
+        const isAuthorized = await auth.checkAuthorization();
+        if(isAuthorized){
+
+            // this is for testing purposes, we should prompt for this
+            // const selectedInstance = await instanceSelector();
+            // const locale = await localePrompt(selectedInstance);
+            const instance = {
+            guid: '95dc2671-d',
+            previewKey: '', 
+            fetchKey: '',
+            websiteDetails: {
+              orgCode: null,
+              orgName: null,
+              websiteName: null,
+              websiteNameStripped: null,
+              displayName: null,
+              guid: '95dc2671-d',
+              websiteID: null,
+              isCurrent: null,
+              managerUrl: null,
+              version: null,
+              isOwner: null,
+              isDormant: null,
+              isRestoring: null
+            }
+            }
+
+            const clean = new Clean(instance,'en-us');
+            await clean.cleanAll();
+
+
+        }
+
+
+
+    }
+})
 
 yargs.command({
     command: "genenv",
