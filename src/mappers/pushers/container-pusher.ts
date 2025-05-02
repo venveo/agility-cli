@@ -40,7 +40,7 @@ export class ContainerPusher {
 
       if (existingTargetContainer && existingTargetContainer.contentViewID !== -1) {
         console.log(
-          `✓ Container ${container.referenceName} exists - ${ansiColors.green("Source")}: (ID: ${container.contentViewID}), ${ansiColors.green("Target")}: (ID: ${existingTargetContainer.contentViewID})`
+          `✓ Container ${ansiColors.underline(container.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green("Source")}: ${container.contentViewID} ${ansiColors.green(this.targetGuid)}: ${existingTargetContainer.contentViewID}`
         );
         this.referenceMapper.addRecord("container", container, existingTargetContainer);
         processedContainers++;

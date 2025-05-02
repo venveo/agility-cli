@@ -109,7 +109,7 @@ export class pushNew{
                     if (existingModel) {
                         // Model exists in target, add it to reference mapper
                         this._referenceMapper.addRecord('model', model, existingModel);
-                        console.log(`✓ Normal Model exists - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} - (ID: ${model.id}), ${ansiColors.green('Target')}: ${existingModel.referenceName} - (ID: ${existingModel.id})`);
+                        console.log(`✓ Normal model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green(this._targetGuid)}: ${existingModel.id}`);
                         modelExists = true;
                         successfulModels++;
                         continue;
@@ -133,7 +133,7 @@ export class pushNew{
                 
                     let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
                     this._referenceMapper.addRecord('model', model, savedModel);
-                    console.log(`✓ Normal Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} (ID: ${model.id.toString()}), ${ansiColors.green('Target')}: ${savedModel.referenceName} (ID: ${savedModel.id.toString()})`);
+                    console.log(`✓ Normal Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.id.toString()} ${ansiColors.green(this._targetGuid)}: ${savedModel.id.toString()}`);
                     successfulModels++;
                 } catch (error) {
                     console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
@@ -144,7 +144,7 @@ export class pushNew{
                             let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
                             if (existingModel) {
                                 this._referenceMapper.addRecord('model', model, existingModel);
-                                console.log(`✓ Normal Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green('Target')}: ${existingModel.referenceName}`);
+                                console.log(`✓ Normal Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green(this._targetGuid)}: ${existingModel.referenceName}`);
                                 successfulModels++;
                             }
                         } catch (getError) {
@@ -165,7 +165,7 @@ export class pushNew{
                     if (existingModel) {
                         // Model exists in target, add it to reference mapper
                         this._referenceMapper.addRecord('model', model, existingModel);
-                        console.log(`✓ Linked Model exists - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} - (ID: ${model.id}), ${ansiColors.green('Target')}: ${existingModel.referenceName} - (ID: ${existingModel.id})`);
+                        console.log(`✓ Nested model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green('Target')}:  ${existingModel.id}`);
                         successfulModels++;
                         continue;
                     }
@@ -200,7 +200,7 @@ export class pushNew{
                      }
                     let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
                     this._referenceMapper.addRecord('model', model, savedModel);
-                    console.log(`✓ Linked Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} (ID: ${model.id.toString()}), ${ansiColors.green('Target')}: ${savedModel.referenceName} (ID: ${savedModel.id.toString()})`);
+                    console.log(`✓ Nested Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} (ID: ${model.id.toString()}), ${ansiColors.green('Target')}: ${savedModel.referenceName} (ID: ${savedModel.id.toString()})`);
                     successfulModels++;
                 } catch (error) {
                     console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
@@ -211,7 +211,7 @@ export class pushNew{
                             let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
                             if (existingModel) {
                                 this._referenceMapper.addRecord('model', model, existingModel);
-                                console.log(`✓ Linked Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green('Target')}: ${existingModel.referenceName}`);
+                                console.log(`✓ Nested Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green('Target')}: ${existingModel.referenceName}`);
                                 successfulModels++;
                             }
                         } catch (getError) {
@@ -221,7 +221,7 @@ export class pushNew{
                 }
             }
 
-            console.log(ansiColors.yellow(`✓ Processed ${successfulModels}/${totalModels} models (${failedModels} failed)`));
+            console.log(ansiColors.yellow(`Processed ${successfulModels}/${totalModels} models (${failedModels} failed)`));
 
             // Get containers
             const containers = this.getBaseContainers();
@@ -253,18 +253,17 @@ export class pushNew{
             this._locale
            );
            
-           await contentPusher.pushContentItems(allContentItems);
+           const contentResult = await contentPusher.pushContentItems(allContentItems);
+           const totalContentItems = allContentItems.length;
+           console.log(ansiColors.yellow(`Processed ${contentResult.successfulItems}/${totalContentItems} content items (${contentResult.failedItems} failed)`));
 
             
-            // Push normal content first
-            // await this.pushNormalContentItems(normalContentItems, this._targetGuid);
-
-            // Then push linked content
-            // await this.pushLinkedContentItems(linkedContentItems, this._targetGuid);
-
             // Push templates
             const templates = await this.getBaseTemplates();
-            await this.pushTemplates(templates, this._targetGuid, this._locale);
+            const templateResult = await this.pushTemplates(templates, this._targetGuid, this._locale);
+            const totalTemplates = templates?.length || 0;
+            const successfulTemplates = templateResult.createdTemplates.length;
+            console.log(ansiColors.yellow(`Processed ${successfulTemplates}/${totalTemplates} templates (${templateResult.failedCount} failed)`));
 
             // then push the pages
             const pages = await this.getBasePages(this._locale);
@@ -543,9 +542,10 @@ export class pushNew{
         return contentItems;
     }
 
-    async pushTemplates(templates: mgmtApi.PageModel[], guid: string, locale: string){
+    async pushTemplates(templates: mgmtApi.PageModel[], guid: string, locale: string): Promise<{ createdTemplates: mgmtApi.PageModel[], failedCount: number }> {
         let apiClient = new mgmtApi.ApiClient(this._options);
         let createdTemplates: mgmtApi.PageModel[] = [];
+        let failedCount = 0; // Initialize failure counter
         let index = 1;
         for(let i = 0; i < templates.length; i++){
             let template = templates[i];
@@ -581,7 +581,7 @@ export class pushNew{
                     // console.log('existingTemplate', existingTemplate);
                    
                     this._referenceMapper.addRecord('template', template, existingTemplate);
-                    console.log(`✓ Template exists - ${ansiColors.green('Source')}: ${template.pageTemplateName} (ID: ${originalID}), ${ansiColors.green('Target')}: ${existingTemplate.pageTemplateName} (ID: ${existingTemplate.pageTemplateID})`);
+                    console.log(`✓ Template ${ansiColors.underline(template.pageTemplateName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${originalID} ${ansiColors.green('Target')}: ${existingTemplate.pageTemplateID}`);
                     createdTemplates.push(existingTemplate);
                     continue;
                 }
@@ -607,11 +607,12 @@ export class pushNew{
                 console.log(`✓ Template created - ${ansiColors.green('Source')}: ${template.pageTemplateName} (ID: ${originalID}), ${ansiColors.green('Target')}: ${createdTemplate.pageTemplateName} (ID: ${createdTemplate.pageTemplateID})`);
             } catch{
                 console.log(`✗ Failed to create template: ${template.pageTemplateName}`);
+                failedCount++; // Increment failure counter
             }
         }
        }
 
-       return createdTemplates;
+       return { createdTemplates, failedCount }; // Return object with counts
     }
 
     async pushPages(guid: string, locale: string, pages: mgmtApi.PageItem[]) {
@@ -662,7 +663,7 @@ export class pushNew{
             }
         }
 
-        console.log(ansiColors.yellow(`✓ Processed ${processedPages}/${totalPages} pages (${failedPages} failed)`));
+        console.log(ansiColors.yellow(`Processed ${processedPages}/${totalPages} pages (${failedPages} failed)`));
     }
 
     private async processPage(page: mgmtApi.PageItem, guid: string, locale: string, isChildPage: boolean) {
@@ -813,7 +814,6 @@ export class pushNew{
             const savePageResponse:any = await apiClient.pageMethods.savePage(payload, guid, locale, parentIDArg, placeBeforeIDArg);
             // console.log('Save Page (5 args)->', savePageResponse);
             
-            // console.log('savePageResponse', savePageResponse);
             // Save the page (6 args - pass modified page object directly)
             // const savePageResponse2 = await apiClient.pageMethods.savePage(page, guid, locale, parentIDArg, placeBeforeIDArg);
             // console.log('Save Page (6 args)->', savePageResponse2);
@@ -858,10 +858,11 @@ export class pushNew{
         }
     }
 
-    private wrapLines(str, width = 80) {
+    private wrapLines(str: string, width: number = 80) {
+        try {
         return str
-          .split('\n')
-          .map(line => {
+          ?.split('\n')
+          ?.map(line => {
             const result = [];
             while (line.length > width) {
               let sliceAt = line.lastIndexOf(' ', width);
@@ -872,7 +873,10 @@ export class pushNew{
             result.push(line);
             return result.join('\n');
           })
-          .join('\n');
+          ?.join('\n');
+        } catch (error) {
+            return str;
+        }
       }
     private updateAssetUrls(contentItem: mgmtApi.ContentItem) {
         const processValue = (value: any): any => {
@@ -1003,24 +1007,40 @@ export class pushNew{
 
     private async pushGalleries(guid: string): Promise<void> {
         const galleries = this.getBaseGalleries();
-        if (!galleries) return;
+        if (!galleries || galleries.length === 0) {
+            console.log('No galleries found to process.');
+            return;
+        }
+
+        let totalGroupings = 0;
+        let successfulGroupings = 0;
+        let failedGroupings = 0;
 
         for (const gallery of galleries) {
             try {
                 for (const mediaGrouping of gallery.assetMediaGroupings) {
-                    const existingGallery = await this._apiClient.assetMethods.getGalleryByName(guid, mediaGrouping.name);
-                    if (existingGallery) {
-                        console.log(`Gallery ${mediaGrouping.name} already exists, skipping...`);
-                        continue;
+                    totalGroupings++;
+                    try {
+                        const existingGallery = await this._apiClient.assetMethods.getGalleryByName(guid, mediaGrouping.name);
+                        if (existingGallery) {
+                            console.log(`✓ Gallery ${mediaGrouping.name} already exists, skipping creation...`);
+                            successfulGroupings++;
+                            continue;
+                        }
+                        mediaGrouping.mediaGroupingID = 0;
+                        const savedGallery = await this._apiClient.assetMethods.saveGallery(guid, mediaGrouping);
+                        console.log(`✓ Gallery created: ${mediaGrouping.name}`);
+                        successfulGroupings++;
+                    } catch (error) {
+                        console.error(`✗ Error processing gallery grouping ${mediaGrouping.name}:`, error);
+                        failedGroupings++;
                     }
-                    mediaGrouping.mediaGroupingID = 0;
-                    const savedGallery = await this._apiClient.assetMethods.saveGallery(guid, mediaGrouping);
-                    console.log(`✓ Gallery created: ${mediaGrouping.name}`);
                 }
             } catch (error) {
-                console.error(`Error processing gallery:`, error);
+                console.error(`✗ Unexpected error processing gallery file:`, error);
             }
         }
+        console.log(ansiColors.yellow(`Processed ${successfulGroupings}/${totalGroupings} gallery groupings (${failedGroupings} failed)`));
     }
 
     private async pushAssets(guid: string): Promise<void> {
@@ -1052,7 +1072,7 @@ export class pushNew{
                             // Extract just the path after the domain
                             const sourcePath = media.originUrl.split('/').slice(3).join('/');
                             const targetPath = existingMedia.originUrl.split('/').slice(3).join('/');
-                            console.log(`✓ Asset exists - ${ansiColors.green('Source')}: ${sourcePath}, ${ansiColors.green('Target')}: ${targetPath} (ID: ${existingMedia.mediaID})`);
+                            console.log(`✓ Asset ${ansiColors.underline(sourcePath.split('/').filter(Boolean).pop())} ${ansiColors.bold.grey('exists')} - ${ansiColors.green(this._targetGuid)}: ${existingMedia.mediaID}`);
                             
                             processedAssets++;
                             continue;
@@ -1089,7 +1109,7 @@ export class pushNew{
                 console.error(`Error processing asset group:`, error);
             }
         }
-        console.log(ansiColors.yellow(`✓ Processed ${processedAssets}/${totalAssets} assets`));
+        console.log(ansiColors.yellow(`Processed ${processedAssets}/${totalAssets} assets`));
     }
 
     private getFilePath(originUrl: string): string {
@@ -1328,7 +1348,7 @@ export class pushNew{
                         } as mgmtApi.ContentItem;
                         // Update both base and specialized reference mappings
                         this._referenceMapper.addRecord('content', contentItem, newContentItem);
-                        console.log(`✓ Linked content item created - Source: ${contentItem.properties.referenceName} (ID: ${contentItem.contentID}), Target: ${newContentItem.properties.referenceName} (ID: ${newContentItem.contentID})`);
+                        console.log(`✓ Nested content item created - Source: ${contentItem.properties.referenceName} (ID: ${contentItem.contentID}), Target: ${newContentItem.properties.referenceName} (ID: ${newContentItem.contentID})`);
                         processedContent++;
                     } else {
                         console.log(`✗ Failed to create linked content item ${contentItem.properties.referenceName}`);
@@ -1349,7 +1369,7 @@ export class pushNew{
                 failedContent++;
             }
         }
-        console.log(ansiColors.yellow(`✓ Processed ${processedContent}/${totalContent} linked content items (${failedContent} failed)`));
+        console.log(ansiColors.yellow(`Processed ${processedContent}/${totalContent} linked content items (${failedContent} failed)`));
     }
 
     private async processLinkedContentFields(contentItem: mgmtApi.ContentItem, path: string): Promise<void> {

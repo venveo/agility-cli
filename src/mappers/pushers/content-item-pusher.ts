@@ -9,15 +9,19 @@ export class ContentPusher {
     private referenceMapper: ReferenceMapper;
     private targetGuid: string;
     private locale: string;
+    private successfulItems: number = 0;
+    private failedItems: number = 0;
 
     constructor(apiClient: mgmtApi.ApiClient, referenceMapper: ReferenceMapper, targetGuid: string, locale: string) {
         this.apiClient = apiClient;
         this.referenceMapper = referenceMapper;
         this.targetGuid = targetGuid;
         this.locale = locale;
+        this.successfulItems = 0;
+        this.failedItems = 0;
     }
 
-    async pushContentItems(contentItems: mgmtApi.ContentItem[]) {
+    async pushContentItems(contentItems: mgmtApi.ContentItem[]): Promise<{ successfulItems: number, failedItems: number }> {
         // First, process content items without nested content references
         const normalContentItems = contentItems.filter(item => {
             const definitionName = item.properties.definitionName; // Get definition name
@@ -108,23 +112,21 @@ export class ContentPusher {
                         };
                         this.referenceMapper.addRecord('content', contentItem, newContentItem); // Use addRecord
                         // const action = existingContentItem ? 'updated':'created';
-                        console.log(`✓ Content item ${contentItem.properties.referenceName} created ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green('Target:')} ${targetContentId}`);
+                        console.log(`✓ Content item ${ansiColors.underline(contentItem.properties.referenceName)} ${ansiColors.bold.cyan('created')} ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green(this.targetGuid)}: ${targetContentId}`);
+                        this.successfulItems++;
                     } else {
                         // This case might happen if creating failed silently or response is unexpected
                          console.log(`✗ Content item save reported success by API, but no target ID found.`,ansiColors.red('Source:'), contentItem.properties.referenceName , '(ID:', contentItem.contentID, ')');
                         //  console.log('Payload:', JSON.stringify(payload, null, 2)); 
-                        //  console.log('API Response:', saveContentItemResponse); 
+                        this.failedItems++;
+                        // console.log(`[DEBUG] Failed items count incremented to: ${this.failedItems}`);
                     }
                 } else {
                     // console.log(payload)
                     console.log(`✗ Failed to ${existingContentItem ? 'update':'create'} content item (API Error)`,ansiColors.red('Source:'), contentItem.properties.referenceName , '(ID:', contentItem.contentID, ')');
                     // console.log('Payload:', JSON.stringify(payload, null, 2)); // Log full payload
-            
-
-                    if (saveContentItemResponse.errorData) {
-                        const formattedErrorData = saveContentItemResponse.errorData.replace(/(.{250})/g, '$1\n');
-                        saveContentItemResponse.errorData = formattedErrorData;
-                    }
+                   
+                    this.failedItems++;
                    const wrapped = this.wrapLines(saveContentItemResponse.errorData, 80);
                    console.log(ansiColors.red(`API Error: ${wrapped}`)); // Log errorDataa
                 // Log statusMessage
@@ -133,6 +135,7 @@ export class ContentPusher {
                  console.error(`✗ Error during processing/saving normal content item ${contentItem?.properties?.referenceName} (ID: ${contentItem?.contentID}):`, error);
                  // Optionally log payload if available
                  if (payload) console.error('Payload at time of error:', JSON.stringify(payload, null, 2));
+                 this.failedItems++;
             }
             
         }
@@ -200,27 +203,31 @@ export class ContentPusher {
                         };
                         this.referenceMapper.addRecord('content', contentItem, newContentItem); // Use addRecord
                         // const action = existingContentItem ? 'updated':'created';
-                        console.log(`✓ Nested Content item ${contentItem.properties.referenceName} created ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green('Target:')} ${targetContentId}`);
+                        console.log(`✓ Nested Content item ${ansiColors.underline(contentItem.properties.referenceName)} ${ansiColors.bold.cyan('created')} ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green(this.targetGuid)} ${targetContentId}`);
+                        this.successfulItems++;
                     } else {
                         // This case might happen if creating failed silently or response is unexpected
                          console.log(`✗ Nested content item save reported success by API, but no target ID found.`,ansiColors.red('Source:'), contentItem.properties.referenceName , '(ID:', contentItem.contentID, ')');
                         //  console.log('Payload:', JSON.stringify(payload, null, 2)); 
-                        //  console.log('API Response:', saveContentItemResponse); 
+                        this.failedItems++;
                     }
                 } else {
                     console.log(`✗ Failed to ${existingContentItem ? 'update':'create'} nested content item (API Error)`,ansiColors.red('Source:'), contentItem.properties.referenceName , '(ID:', contentItem.contentID, ')');
                     // console.log('Payload:', JSON.stringify(payload, null, 2)); // Log full payload
                     console.log('API Error Data:', saveContentItemResponse.errorData); // Log errorData
                     console.log('API Status Message:', saveContentItemResponse.statusMessage); // Log statusMessage
+                    this.failedItems++;
                 }
             } catch (error) {
                 console.error(`✗ Error during processing/saving nested content item ${contentItem?.properties?.referenceName} (ID: ${contentItem?.contentID}):`, error);
                  // Optionally log payload if available
                  if (payload) console.error('Payload at time of error:', JSON.stringify(payload, null, 2));
+                 this.failedItems++;
             }
         }
         // console.log(ansiColors.cyan('--------------------------------'));
 
+        return { successfulItems: this.successfulItems, failedItems: this.failedItems };
     }
 
  
