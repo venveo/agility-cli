@@ -12,8 +12,8 @@ import { mapContentItem } from './mappers/content-item-mapper';
 import { findContainerInTargetInstance } from './mappers/finders/container-finder';
 import { ContainerPusher } from './mappers/pushers/container-pusher';
 import { ContentPusher } from './mappers/pushers/content-item-pusher';
-
-// Extend the PageItem type to include pageTemplateID
+// // Extend the PageItem type to include pageTemplateID
+// const wrapAnsi = require('wrap-ansi');
 declare module '@agility/management-sdk' {
     interface PageItem {
         pageTemplateID?: number;
@@ -668,11 +668,7 @@ export class pushNew{
     private async processPage(page: mgmtApi.PageItem, guid: string, locale: string, isChildPage: boolean) {
         let apiClient = new mgmtApi.ApiClient(this._options);
 
-        console.log('\n=== Processing Page ===');
-        console.log(`Page Name: ${page.name}`);
-        console.log(`Page ID: ${page.pageID}`);
-        console.log(`Template Name: ${page.templateName}`);
-        console.log(`Is Child Page: ${isChildPage}`);
+       
 
         try {
             // Get the sitemap first
@@ -687,11 +683,11 @@ export class pushNew{
                 const websiteChannel = sitemap.find(channel => channel.digitalChannelTypeName === 'Website');
                 if (websiteChannel) {
                     channelID = websiteChannel.digitalChannelID;
-                    console.log('channelID', channelID);
+                    // console.log('channelID', channelID);
                     const pageInSitemap = websiteChannel.pages.find(p => p.pageName === page.name);
                     if (pageInSitemap) {
                         correctPageID = pageInSitemap.pageID;
-                        console.log(`✓ Found page in sitemap - ID: ${correctPageID}, Channel ID: ${channelID}`);
+                        // console.log(`✓ Found page in sitemap - ID: ${correctPageID}, Channel ID: ${channelID}`);
                     }
                 }
             }
@@ -716,7 +712,7 @@ export class pushNew{
             }
 
             page.pageTemplateID = targetTemplate.pageTemplateID;
-            console.log(`✓ Template found and mapped - ID: ${page.pageTemplateID}`);
+            // console.log(`✓ Template found and mapped - ID: ${page.pageTemplateID}`);
 
             // Get the page zones
             let zones = page.zones;
@@ -734,15 +730,21 @@ export class pushNew{
                         
                         if ('contentID' in module.item || 'contentId' in module.item) {
                             const originalContentId = module.item.contentId || module.item.contentID;
-                            console.log(`\nModule:`, module);
-                            console.log(`Original Content ID: ${originalContentId}`);
+                            // console.log(`\nModule:`, module);
+                            // console.log(`Original Content ID: ${originalContentId}`);
                             
                             const contentRef = this._referenceMapper.getContentMappingById<mgmtApi.ContentItem>(originalContentId);
                             
                             if (contentRef?.target) {
-                                module.item.contentID = contentRef.target.contentID; // Update directly
-                                delete module.item.contentId; // Clean up old property if exists
-                                console.log(` ✓ Mapped Content ID: ${contentRef.target.contentID}`);
+                                // Set module.item to an object containing both contentId and referenceName
+                                module.item = {
+                                     contentId: contentRef.target.contentID,
+                                     referenceName: contentRef.target.properties.referenceName // Add referenceName
+                                };
+                                // Optionally remove the uppercase one if it exists from the source JSON
+                                // (We replaced the whole item, so this might not be needed, but keep for safety)
+                                delete module.item.contentID;
+                                // console.log(` ✓ Mapped Item: contentId=${contentRef.target.contentID}, refName=${contentRef.target.properties.referenceName}`);
                             } else {
                                 console.log(` ✗ Content ${originalContentId} not found in reference mapper for page ${page.name}`);
                                 mappingSuccessful = false;
@@ -761,54 +763,93 @@ export class pushNew{
 
             // Check if page already exists (using previously determined correctPageID)
             let existingPage;
-            let pageExists = false;
             try {
                 // Try to get the page by ID if we have it
                 if (correctPageID > 0) {
                     existingPage = await apiClient.pageMethods.getPage(correctPageID, guid, locale);
 
                     if(existingPage && existingPage.visible.sitemap !== null){
-                        console.log(`\n✓ Page exists - ${ansiColors.green('Source')}: ${page.name} (ID: ${page.pageID}), ${ansiColors.green('Target')}: ${existingPage.name} (ID: ${existingPage.pageID})`);
-                        pageExists = true;
+                        // console.log(`✓ Page exists - ${ansiColors.green('Source')}: ${page.name} (ID: ${page.pageID}), ${ansiColors.green('Target')}: ${existingPage.name} (ID: ${existingPage.pageID})`);
                     }
                 }
             } catch (error) {
                 console.log(`\nNo existing page found for ID: ${correctPageID}`);
             }
 
-            // Create the page payload using the *modified* page object
-            const pagePayload: mgmtApi.PageItem = {
-                ...page, // Spread the pre-modified page object
-                pageID: pageExists ? existingPage.pageID : -1, // Use -1 for new page creation
-                path: page.path || `/${page.name.toLowerCase()}`,
-                securePage: page.securePage || false,
-                parentPageID: page.parentPageID || -1,
-                placeBeforePageItemID: page.placeBeforePageItemID || -1,
-                channelID: -1, // Force -1 like old implementation
-                pageTemplateID: targetTemplate.pageTemplateID // Use mapped template ID
-             };
-
-            // Save the page
-            const savePageResponse = await apiClient.pageMethods.savePage(pagePayload, guid, locale, pagePayload.parentPageID, pagePayload.placeBeforePageItemID);
-            console.log('Save Page->', savePageResponse);
-            // console.log(pageIdArray)
-            const savePageResponse2 = await apiClient.pageMethods.savePage(pagePayload, guid, locale, pagePayload.parentPageID, pagePayload.placeBeforePageItemID, true);
-            console.log('Save Page 2->', savePageResponse2);
-
+            // --- Modify the page object directly, like the old code ---
+            const originalPageSource = { ...page };
+ 
+            // --- Modify the page object directly, like the old code ---
+            // page.channelID = -1; // FORCE -1 like old implementation
+            // Set pageID for creation/update
+            // page.pageID = pageExists ? existingPage.pageID : -1;
+            // Ensure the mapped template ID is set *from the target template*
+            // page.pageTemplateID = targetTemplate.pageTemplateID; 
             
-            // if (pageIdArray && pageIdArray[0] > 0) {
-            //     const newPage = {
-            //         ...pagePayload,
-            //         pageID: pageIdArray[0]
-            //     } as mgmtApi.PageItem;
-      
-            //     this._referenceMapper.addRecord('page', page, newPage); // Use original page for source key
-            //     console.log(`\n✓ ${isChildPage ? 'Child ' : ''}Page ${page.name} ${pageExists ? 'Updated' : 'Created'} - Target ID: ${newPage.pageID}`);
-      
-            // } else {
-            //     console.log('\n✗ Failed to create/update page');
-            //     console.log('Page Payload:', JSON.stringify(pagePayload, null, 2));
-            // }
+            // Parent/PlaceBefore are handled by arguments, not needed in payload obj
+
+            // Create the page payload using the *modified* page object
+            // const pagePayload: mgmtApi.PageItem = { ... }; // No longer creating a separate payload
+
+             // Extract values to pass as arguments
+             const parentIDArg = page.parentPageID || -1;
+             const placeBeforeIDArg = page.placeBeforePageItemID || -1;
+
+            // console.log('\n--- Sending Page Payload ---');
+            // console.log(JSON.stringify(page, null, 2)); // Log the payload
+            // console.log('--------------------------\n');
+
+            // Save the page (5 args - pass modified page object directly)
+            const payload = {
+                ...page,
+                pageID: existingPage ? existingPage.pageID : -1,
+                pageTemplateID: targetTemplate.pageTemplateID,
+                channelID: -1,
+            }
+
+
+
+
+            const savePageResponse:any = await apiClient.pageMethods.savePage(payload, guid, locale, parentIDArg, placeBeforeIDArg);
+            // console.log('Save Page (5 args)->', savePageResponse);
+            
+            // console.log('savePageResponse', savePageResponse);
+            // Save the page (6 args - pass modified page object directly)
+            // const savePageResponse2 = await apiClient.pageMethods.savePage(page, guid, locale, parentIDArg, placeBeforeIDArg);
+            // console.log('Save Page (6 args)->', savePageResponse2);
+
+            // Process the response (using the 6-arg response for details)
+            if (Array.isArray(savePageResponse) || savePageResponse.length > 0) { // Type guard: If it's not an array, it must be a Batch
+                if (savePageResponse && savePageResponse[0] > 0) {
+                    const newPageID = savePageResponse[0];
+                    // We need to create a *new* object to store in the mapper 
+                    // to avoid potential side effects if 'page' is used elsewhere.
+                    const createdPageData = { 
+                      ...page, // Use the modified page data
+                      pageID: newPageID // Set the correct new ID
+                    } as mgmtApi.PageItem;
+
+                    this._referenceMapper.addRecord('page', page, createdPageData); // Use original page for source key
+                    console.log(`✓ ${isChildPage ? 'Child ' : ''}Page ${page.name} ${existingPage ? 'Updated' : 'Created'} - Target ID: ${newPageID}`);
+                } else {
+                    console.log(`✗ Failed to create/update page`);
+                    // const errorData = savePageResponse?.errorData || 'No error data';
+                    // const wrapAnsi = (await import('wrap-ansi')).default;
+                    const wrapped = this.wrapLines(savePageResponse.errorData,  80);
+                    console.log(ansiColors.red(`API Error: ${wrapped}`));
+                    console.log('payload', JSON.stringify(payload, null, 2));
+                }
+            } else {
+                console.log(`✗ Failed to create/update page`);
+
+                // const errorData = savePageResponse?.errorData || 'No error data';
+                // The dynamic import and wrapping is only needed in the other block
+                const wrapped = this.wrapLines(savePageResponse.errorData,  80);
+                console.log(ansiColors.red(`API Error: ${wrapped}`));
+              
+                // console.log(errorData); 
+                console.log('payload', JSON.stringify(payload, null, 2));
+            }
         } catch (error) {
             console.log(`\n✗ Error processing page ${page.name}:`, error);
             if (error.response) {
@@ -817,6 +858,22 @@ export class pushNew{
         }
     }
 
+    private wrapLines(str, width = 80) {
+        return str
+          .split('\n')
+          .map(line => {
+            const result = [];
+            while (line.length > width) {
+              let sliceAt = line.lastIndexOf(' ', width);
+              if (sliceAt === -1) sliceAt = width;
+              result.push(line.slice(0, sliceAt));
+              line = line.slice(sliceAt).trimStart();
+            }
+            result.push(line);
+            return result.join('\n');
+          })
+          .join('\n');
+      }
     private updateAssetUrls(contentItem: mgmtApi.ContentItem) {
         const processValue = (value: any): any => {
             if (Array.isArray(value)) {

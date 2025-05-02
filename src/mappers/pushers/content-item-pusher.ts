@@ -76,12 +76,12 @@ export class ContentPusher {
                 }
 
                 // Restore 4th argument to true
-                const saveContentItemResponse:any = await this.apiClient.contentMethods.saveContentItem(payload, this.targetGuid, this.locale, true);
+                const saveContentItemResponse:any = await this.apiClient.contentMethods.saveContentItem(payload, this.targetGuid, this.locale);
                 
                 // console.log('contentIdArray', saveContentItemResponse);
                 
                 // Check for API error data primarily
-                if (saveContentItemResponse.errorData === null) { 
+                if (Array.isArray(saveContentItemResponse)) { 
     
                 //  if(contentItem.contentID === 13 || contentItem.contentID === 23) { // Added check for item 23 too
                 //     console.log(ansiColors.yellow('--- DEBUG: Response for PostsListing Item ---'));
@@ -91,8 +91,8 @@ export class ContentPusher {
     
                     // Determine the target ID from the batch response itemID or existing item
                     let targetContentId: number | undefined | null = null;
-                    if (saveContentItemResponse.items && saveContentItemResponse.items.length > 0 && saveContentItemResponse.items[0].itemID > 0) { // Use itemID
-                        targetContentId = saveContentItemResponse.items[0].itemID; // Use itemID
+                    if (saveContentItemResponse && saveContentItemResponse.length > 0) { // Use itemID
+                        targetContentId = saveContentItemResponse[0]; // Use itemID
                         // if(contentItem.contentID === 13 || contentItem.contentID === 23) console.log(ansiColors.yellow('Target ID from items[0].itemID:'), targetContentId);
                     } else {
                         // Fallback for updates or unexpected response structure
@@ -108,7 +108,7 @@ export class ContentPusher {
                         };
                         this.referenceMapper.addRecord('content', contentItem, newContentItem); // Use addRecord
                         // const action = existingContentItem ? 'updated':'created';
-                        console.log(`✓ Content item ${contentItem.properties.referenceName} created ${ansiColors.green('Source:')} d${contentItem.contentID} ${ansiColors.green('Target:')} ${targetContentId}`);
+                        console.log(`✓ Content item ${contentItem.properties.referenceName} created ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green('Target:')} ${targetContentId}`);
                     } else {
                         // This case might happen if creating failed silently or response is unexpected
                          console.log(`✗ Content item save reported success by API, but no target ID found.`,ansiColors.red('Source:'), contentItem.properties.referenceName , '(ID:', contentItem.contentID, ')');
@@ -119,8 +119,15 @@ export class ContentPusher {
                     // console.log(payload)
                     console.log(`✗ Failed to ${existingContentItem ? 'update':'create'} content item (API Error)`,ansiColors.red('Source:'), contentItem.properties.referenceName , '(ID:', contentItem.contentID, ')');
                     // console.log('Payload:', JSON.stringify(payload, null, 2)); // Log full payload
-                    console.log('API Error Data:', saveContentItemResponse.errorData); // Log errorData
-                    console.log('API Status Message:', saveContentItemResponse.statusMessage); // Log statusMessage
+            
+
+                    if (saveContentItemResponse.errorData) {
+                        const formattedErrorData = saveContentItemResponse.errorData.replace(/(.{250})/g, '$1\n');
+                        saveContentItemResponse.errorData = formattedErrorData;
+                    }
+                   const wrapped = this.wrapLines(saveContentItemResponse.errorData, 80);
+                   console.log(ansiColors.red(`API Error: ${wrapped}`)); // Log errorDataa
+                // Log statusMessage
                 }
             } catch (error) {
                  console.error(`✗ Error during processing/saving normal content item ${contentItem?.properties?.referenceName} (ID: ${contentItem?.contentID}):`, error);
@@ -163,10 +170,10 @@ export class ContentPusher {
                 }
 
                 // Use 4 args for detailed response
-                const saveContentItemResponse: any = await this.apiClient.contentMethods.saveContentItem(payload, this.targetGuid, this.locale, true);
+                const saveContentItemResponse: any = await this.apiClient.contentMethods.saveContentItem(payload, this.targetGuid, this.locale);
 
                 // Check for API error data primarily
-                if (saveContentItemResponse.errorData === null) {
+                if (Array.isArray(saveContentItemResponse)) {
     
                     // if(contentItem.properties.definitionName === 'FeaturedPost') { // Added check FeaturedPost items
                     //     console.log(ansiColors.yellow('--- DEBUG: Response for FeaturedPost Item ---'));
@@ -176,13 +183,13 @@ export class ContentPusher {
     
                     // Determine the target ID from the batch response itemID or existing item
                     let targetContentId: number | undefined | null = null;
-                     if (saveContentItemResponse.items && saveContentItemResponse.items.length > 0 && saveContentItemResponse.items[0].itemID > 0) { // Use itemID
-                        targetContentId = saveContentItemResponse.items[0].itemID; // Use itemID
-                        if(contentItem.properties.definitionName === 'FeaturedPost') console.log(ansiColors.yellow('Target ID from items[0].itemID:'), targetContentId);
+                     if (saveContentItemResponse && saveContentItemResponse.length > 0) { // Use itemID
+                        targetContentId = saveContentItemResponse[0]; // Use itemID
+                        // if(contentItem.properties.definitionName === 'FeaturedPost') console.log(ansiColors.yellow('Target ID from items[0].itemID:'), targetContentId);
                     } else {
                         // Fallback for updates or unexpected response structure
                         targetContentId = existingContentItem?.contentID;
-                        if(contentItem.properties.definitionName === 'FeaturedPost') console.log(ansiColors.yellow('Target ID from fallback existingContentItem?.contentID:'), targetContentId);
+                        // if(contentItem.properties.definitionName === 'FeaturedPost') console.log(ansiColors.yellow('Target ID from fallback existingContentItem?.contentID:'), targetContentId);
                     }
     
                     if (targetContentId) { // Ensure we have a target ID
@@ -216,6 +223,23 @@ export class ContentPusher {
 
     }
 
+ 
+    private wrapLines(str, width = 80) {
+        return str
+          .split('\n')
+          .map(line => {
+            const result = [];
+            while (line.length > width) {
+              let sliceAt = line.lastIndexOf(' ', width);
+              if (sliceAt === -1) sliceAt = width;
+              result.push(line.slice(0, sliceAt));
+              line = line.slice(sliceAt).trimStart();
+            }
+            result.push(line);
+            return result.join('\n');
+          })
+          .join('\n');
+      }
     async pushContentItem(contentItem: mgmtApi.ContentItem) {
         // const existingContentItem = await this.apiClient.contentMethods.getContentItem(contentItem.contentID.toString(),  this.targetGuid, this.locale);
         // if (existingContentItem) {

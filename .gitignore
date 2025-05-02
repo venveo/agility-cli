@@ -44,3 +44,11 @@ yarn-error.log*
 /.cursor/**/*
 /.cursor/manifest.md
 /.cursor/rules/project-settings.mdc
+
+
+#workspace
+*.workspace
+**/*.workspace
+/**/*.workspace
+
+/src/*.workspace

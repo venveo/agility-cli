@@ -122,13 +122,24 @@ export class ReferenceMapper {
                 return r.source.pageTemplateName === source.pageTemplateName;
             }
 
-            
+            // *** RE-ADDED: Special handling for pages ***
+            if (type === 'page' && source.pageID) {
+                return r.source.pageID === source.pageID;
+            }
+
             // Default comparison
             return r.source === source;
         });
         
+        // --- DEBUG: Log findIndex result ---
+       
+        // --- END DEBUG ---
+
         if (existingIndex >= 0) {
             // Update existing record
+            // --- DEBUG: Log update action ---
+           
+            // --- END DEBUG ---
             this.records[existingIndex] = {
                 type,
                 source,
@@ -138,6 +149,9 @@ export class ReferenceMapper {
             };
         } else {
             // Add new record
+            // --- DEBUG: Log add action ---
+           
+             // --- END DEBUG ---
             this.records.push({
                 type,
                 source,
@@ -210,6 +224,13 @@ export class ReferenceMapper {
                 : r.source[key] === value)
         );
         
+        // --- DEBUG: Log find result ---
+        if(type === 'page') {
+             console.log(ansiColors.yellow(`[Mapper Debug getMappingByKey] Searching for type=${type}, key=${key}, value=${value}`));
+             console.log(ansiColors.yellow(`[Mapper Debug getMappingByKey] Found record: ${record ? `SourceID: ${record.source?.pageID}, TargetID: ${record.target?.pageID}` : 'null'}`));
+        }
+        // --- END DEBUG ---
+
         return record ? { 
             source: record.source, 
             target: record.target,

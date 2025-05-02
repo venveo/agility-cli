@@ -54,6 +54,7 @@
     "log-update": "^5.0.1",
     "open": "^8.4.0",
     "ora": "^8.2.0",
+    "wrap-ansi": "^9.0.0",
     "yargs": "^17.6.2"
   },
   "devDependencies": {
