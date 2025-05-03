@@ -109,7 +109,7 @@ export class pushNew{
                     if (existingModel) {
                         // Model exists in target, add it to reference mapper
                         this._referenceMapper.addRecord('model', model, existingModel);
-                        console.log(`✓ Normal model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green(this._targetGuid)}: ${existingModel.id}`);
+                        console.log(`✓ Normal model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green(this._targetGuid)}: id:${existingModel.id}`);
                         modelExists = true;
                         successfulModels++;
                         continue;
@@ -581,7 +581,7 @@ export class pushNew{
                     // console.log('existingTemplate', existingTemplate);
                    
                     this._referenceMapper.addRecord('template', template, existingTemplate);
-                    console.log(`✓ Template ${ansiColors.underline(template.pageTemplateName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${originalID} ${ansiColors.green('Target')}: ${existingTemplate.pageTemplateID}`);
+                    console.log(`✓ Template ${ansiColors.underline(template.pageTemplateName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${originalID} ${ansiColors.green('Target')}: pageTemplateID:${existingTemplate.pageTemplateID}`);
                     createdTemplates.push(existingTemplate);
                     continue;
                 }
@@ -693,16 +693,10 @@ export class pushNew{
                 }
             }
 
-            // Get the page template from reference mapper
-            // console.log(`Looking up template in reference mapper - Template Name: ${page.templateName}`);
             let templateRef = this._referenceMapper.getMappingByKey<mgmtApi.PageModel>('template', 'pageTemplateName', page.templateName);
-            // console.log('Template reference lookup result:', templateRef);
             
             if (!templateRef) {
                 console.log(`✗ Template not found in reference mapper for page: ${page.name} (Template: ${page.templateName})`);
-                // Log all available template mappings for debugging
-                // const allTemplateMappings = this._referenceMapper.getRecordsByType('template');
-                // console.log('Available template mappings:', allTemplateMappings);
                 return;
             }
 
@@ -716,100 +710,57 @@ export class pushNew{
             // console.log(`✓ Template found and mapped - ID: ${page.pageTemplateID}`);
 
             // Get the page zones
-            let zones = page.zones;
-            let mappingSuccessful = true; // Flag to track content mapping
-            if (!zones) {
-                console.log(`✗ No zones found for page: ${page.name}`);
-                mappingSuccessful = false; // Or handle as needed
-            }
+            let mappedZones = page.zones;
+
+            // let payload = {
+            //     ...page,
+            // }
 
             // Process each zone *and* map content IDs directly on the page object
-            if (mappingSuccessful) {
-                for (const [zoneName, zoneContent] of Object.entries(zones)) {
+                for (const [zoneName, zoneContent] of Object.entries(mappedZones)) {
                     // Process each module in the zone
                     for (const module of zoneContent) {
-                        
-                        if ('contentID' in module.item || 'contentId' in module.item) {
-                            const originalContentId = module.item.contentId || module.item.contentID;
-                            // console.log(`\nModule:`, module);
-                            // console.log(`Original Content ID: ${originalContentId}`);
-                            
-                            const contentRef = this._referenceMapper.getContentMappingById<mgmtApi.ContentItem>(originalContentId);
-                            
+                        if ('contentId' in module.item) {
+                            const contentRef = this._referenceMapper.getContentMappingById<mgmtApi.ContentItem>(module.item.contentId);
                             if (contentRef?.target) {
-                                // Set module.item to an object containing both contentId and referenceName
                                 module.item = {
                                      contentId: contentRef.target.contentID,
-                                     referenceName: contentRef.target.properties.referenceName // Add referenceName
+                                    //  referenceName: contentRef.target.properties.referenceName
                                 };
-                                // Optionally remove the uppercase one if it exists from the source JSON
-                                // (We replaced the whole item, so this might not be needed, but keep for safety)
-                                delete module.item.contentID;
-                                // console.log(` ✓ Mapped Item: contentId=${contentRef.target.contentID}, refName=${contentRef.target.properties.referenceName}`);
                             } else {
-                                console.log(` ✗ Content ${originalContentId} not found in reference mapper for page ${page.name}`);
-                                mappingSuccessful = false;
-                                // Don't break here, log all missing items
+                                console.log(` ✗ Content ${module.item.contentId} not found in reference mapper for page ${page.name}`); // Don't break here, log all missing items
                             }
                         }
                     }
                 }
-            }
 
-            // If any content mapping failed, abort processing this page
-            if (!mappingSuccessful) {
-                console.log(` ✗ Aborting page ${page.name} due to missing content item mappings.`);
-                return; 
-            }
-
+            
             // Check if page already exists (using previously determined correctPageID)
             let existingPage;
             try {
                 // Try to get the page by ID if we have it
                 if (correctPageID > 0) {
                     existingPage = await apiClient.pageMethods.getPage(correctPageID, guid, locale);
-
-                    if(existingPage && existingPage.visible.sitemap !== null){
-                        // console.log(`✓ Page exists - ${ansiColors.green('Source')}: ${page.name} (ID: ${page.pageID}), ${ansiColors.green('Target')}: ${existingPage.name} (ID: ${existingPage.pageID})`);
-                    }
                 }
             } catch (error) {
                 console.log(`\nNo existing page found for ID: ${correctPageID}`);
             }
 
-            // --- Modify the page object directly, like the old code ---
-            const originalPageSource = { ...page };
- 
-            // --- Modify the page object directly, like the old code ---
-            // page.channelID = -1; // FORCE -1 like old implementation
-            // Set pageID for creation/update
-            // page.pageID = pageExists ? existingPage.pageID : -1;
-            // Ensure the mapped template ID is set *from the target template*
-            // page.pageTemplateID = targetTemplate.pageTemplateID; 
-            
-            // Parent/PlaceBefore are handled by arguments, not needed in payload obj
-
-            // Create the page payload using the *modified* page object
-            // const pagePayload: mgmtApi.PageItem = { ... }; // No longer creating a separate payload
-
-             // Extract values to pass as arguments
+       
              const parentIDArg = page.parentPageID || -1;
              const placeBeforeIDArg = page.placeBeforePageItemID || -1;
 
-            // console.log('\n--- Sending Page Payload ---');
-            // console.log(JSON.stringify(page, null, 2)); // Log the payload
-            // console.log('--------------------------\n');
-
-            // Save the page (5 args - pass modified page object directly)
             const payload = {
                 ...page,
                 pageID: existingPage ? existingPage.pageID : -1,
                 pageTemplateID: targetTemplate.pageTemplateID,
-                channelID: -1,
+                channelID: existingPage ? existingPage.channelID : -1,
+                zones: mappedZones
+                // zones: existingPage ? existingPage.zones : page.zones
             }
 
 
-
+            // this is the old code that works.
 
             const savePageResponse:any = await apiClient.pageMethods.savePage(payload, guid, locale, parentIDArg, placeBeforeIDArg);
             // console.log('Save Page (5 args)->', savePageResponse);
@@ -1072,7 +1023,7 @@ export class pushNew{
                             // Extract just the path after the domain
                             const sourcePath = media.originUrl.split('/').slice(3).join('/');
                             const targetPath = existingMedia.originUrl.split('/').slice(3).join('/');
-                            console.log(`✓ Asset ${ansiColors.underline(sourcePath.split('/').filter(Boolean).pop())} ${ansiColors.bold.grey('exists')} - ${ansiColors.green(this._targetGuid)}: ${existingMedia.mediaID}`);
+                            console.log(`✓ Asset ${ansiColors.underline(sourcePath.split('/').filter(Boolean).pop())} ${ansiColors.bold.grey('exists')} - ${ansiColors.green(this._targetGuid)}: mediaID:${existingMedia.mediaID}`);
                             
                             processedAssets++;
                             continue;

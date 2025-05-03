@@ -40,7 +40,7 @@ export class ContainerPusher {
 
       if (existingTargetContainer && existingTargetContainer.contentViewID !== -1) {
         console.log(
-          `✓ Container ${ansiColors.underline(container.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green("Source")}: ${container.contentViewID} ${ansiColors.green(this.targetGuid)}: ${existingTargetContainer.contentViewID}`
+          `✓ Container ${ansiColors.underline(container.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green("Source")}: ${container.contentViewID} ${ansiColors.green(this.targetGuid)}: referenceName:${existingTargetContainer.referenceName} contentViewID:${existingTargetContainer.contentViewID}`
         );
         this.referenceMapper.addRecord("container", container, existingTargetContainer);
         processedContainers++;
@@ -72,16 +72,18 @@ export class ContainerPusher {
       try {
         const savedContainer = await this.apiClient.containerMethods.saveContainer(
           payload as mgmtApi.Container,
-          this.targetGuid
+          this.targetGuid,
+          true
+          // true // force the reference name to maintain the original name
         );
 
         this.referenceMapper.addRecord("container", container, savedContainer);
         console.log(
-          `✓ Container created - ${container.referenceName} - ${ansiColors.green("Source")}: ${
-            container.referenceName
-          } (ID: ${container.contentViewID}), ${ansiColors.green("Target")}: ${savedContainer.referenceName} (ID: ${
+          `✓ Container ${ansiColors.underline(container.referenceName)} ${ansiColors.bold.cyan('created')} - ${ansiColors.green("Source")}: ${container.contentViewID} ${ansiColors.green("Target")} referenceName: ${
+            savedContainer.referenceName
+          } contentViewID: ${
             savedContainer.contentViewID
-          })`
+          }`
         );
         processedContainers++;
       } catch (error) {

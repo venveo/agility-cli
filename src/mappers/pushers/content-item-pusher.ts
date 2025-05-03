@@ -112,7 +112,7 @@ export class ContentPusher {
                         };
                         this.referenceMapper.addRecord('content', contentItem, newContentItem); // Use addRecord
                         // const action = existingContentItem ? 'updated':'created';
-                        console.log(`✓ Content item ${ansiColors.underline(contentItem.properties.referenceName)} ${ansiColors.bold.cyan('created')} ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green(this.targetGuid)}: ${targetContentId}`);
+                        console.log(`✓ Content item ${ansiColors.underline(contentItem.properties.referenceName)} ${ansiColors.bold.cyan('created')} ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green(this.targetGuid)}: contentID:${targetContentId}`);
                         this.successfulItems++;
                     } else {
                         // This case might happen if creating failed silently or response is unexpected
@@ -129,6 +129,7 @@ export class ContentPusher {
                     this.failedItems++;
                    const wrapped = this.wrapLines(saveContentItemResponse.errorData, 80);
                    console.log(ansiColors.red(`API Error: ${wrapped}`)); // Log errorDataa
+                   console.log('payload', JSON.stringify(payload, null, 2));
                 // Log statusMessage
                 }
             } catch (error) {
@@ -203,7 +204,7 @@ export class ContentPusher {
                         };
                         this.referenceMapper.addRecord('content', contentItem, newContentItem); // Use addRecord
                         // const action = existingContentItem ? 'updated':'created';
-                        console.log(`✓ Nested Content item ${ansiColors.underline(contentItem.properties.referenceName)} ${ansiColors.bold.cyan('created')} ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green(this.targetGuid)} ${targetContentId}`);
+                        console.log(`✓ Nested Content item ${ansiColors.underline(contentItem.properties.referenceName)} ${ansiColors.bold.cyan('created')} ${ansiColors.green('Source:')} ${contentItem.contentID} ${ansiColors.green(this.targetGuid)} contentID:${targetContentId}`);
                         this.successfulItems++;
                     } else {
                         // This case might happen if creating failed silently or response is unexpected

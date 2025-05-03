@@ -40,3 +40,21 @@ The content item creation process:
 2. Verify the reference mapper state after normal content creation
 3. Analyze the API error responses for linked content failures
 4. Review the content item mapping logic for potential issues with nested references
+
+## Task: Fix Page Push Functionality (July 24, 2024)
+
+**Goal:** Resolve errors preventing pages from being created or updated during the push process.
+
+**Identified Issues:**
+1.  **Missing `referenceName`:** API error `Cannot insert the value NULL into column 'referenceName', table '...ContentViews'` indicates the `referenceName` for the `ContentView` associated with a page module instance is missing when the backend tries to create it.
+2.  **Dynamic Page Constraint:** API error `You may only have one Dynamic Page at the current sitemap level` occurs when pushing dynamic pages under a parent that might already have one on the target.
+
+**Plan:**
+
+-   [x] Analyze backend C# `BatchInsertPageItem` function to understand payload requirements (`.cursor/rules/functions/BatchProcessing.cs`).
+-   [x] Create example page payload structure (`.cursor/page-payload.md`).
+-   [x] **Investigate CLI Payload Generation:** Examine `src/push_new.ts` (`processPage` function) to find where the page save payload is constructed.
+-   [x] **Fix `referenceName` Issue:** Modified `src/push_new.ts` to ensure the `item` object within the `zones` payload includes the `referenceName` (source content item reference name) alongside the mapped `contentId`.
+-   [ ] **Address Dynamic Page Constraint (Investigation):** Verify parent page ID mapping in `page-pusher.ts`. The constraint itself might be valid due to target instance state or a backend rule. The CLI fix will focus on ensuring correct data is sent. If the constraint error persists after fixing the `referenceName`, it might require manual intervention or different handling (e.g., skipping, warning).
+-   [ ] **Test:** Rerun the push process with the fixes to confirm errors are resolved.
+-   [ ] **Update Manifest:** Mark tasks as complete.
