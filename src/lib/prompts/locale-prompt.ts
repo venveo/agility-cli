@@ -41,7 +41,7 @@ export async function localePrompt(selectedInstance:AgilityInstance) {
     return answers.locales;
 
     } catch (error) {
-        
+        console.error('Error fetching locales:', error);
         return null;
     }
 }

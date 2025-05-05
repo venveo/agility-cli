@@ -347,7 +347,8 @@ export class Auth {
           }
         }
       }
-    } catch {
+    } catch (error) {
+      console.error('Error checking user role:', error);
       return false;
     }
 

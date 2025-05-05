@@ -4,9 +4,10 @@ import ansiColors from "ansi-colors";
 
 inquirer.registerPrompt('checkbox-plus', require('inquirer-checkbox-plus-prompt'));
 
-export async function elementsPrompt() {
+export async function elementsPrompt(type: 'pull' | 'push' = 'pull') {
 
-    var elements = ['Assets', 'Galleries', 'Models', 'Content', 'Pages'];
+    const elements = ['Assets', 'Galleries', 'Models', 'Content', 'Pages'];
+    const pushElements = ['Assets', 'Galleries', 'Models', 'Content', 'Pages', 'Containers', 'Templates'];
     
     console.log(ansiColors.red(`\n⚠️  It is advised to download the entirity of the instance, partial downloads may result in push issues.\n`));
 
@@ -17,14 +18,14 @@ export async function elementsPrompt() {
             pageSize: 10,
             highlight: true,
             searchable: true,
-            default: ['Assets', 'Galleries', 'Models', 'Content', 'Pages'],
+            default: type === 'pull' ? elements : pushElements,
             source: function(answersSoFar, input) {
           
               input = input || '';
           
               return new Promise(function(resolve) {
           
-                var fuzzyResult = fuzzy.filter(input, elements);
+                var fuzzyResult = fuzzy.filter(input, type === 'pull' ? elements : pushElements);
           
                 var data = fuzzyResult.map(function(element) {
                   return element.original;

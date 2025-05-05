@@ -18,8 +18,7 @@ inquirer.registerPrompt("search-list", require("inquirer-search-list"));
 export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
 
   const auth = new Auth();
-  const isAgilityDev = await auth.getUser(selectedInstance.guid);
-  console.log('isAgilityDev', isAgilityDev)
+  const { jobRole} = await auth.getUser(selectedInstance.guid);
 
   const choices = [
     new inquirer.Separator(),
@@ -37,7 +36,7 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
   ];
 
 
-  if(isAgilityDev.jobRole === 'developer'){
+  if(jobRole === 'developer'){
     choices.push({ name: "Generate TypeScript interfaces (beta)", value: "types" });
     choices.push({ name: "Generate React Components (beta)", value: "reactcomponents" });
     choices.push(  new inquirer.Separator() )

@@ -62,6 +62,7 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
 
         let user = await auth.getUser(guid);
 
+
         const fullPath = `agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`;
         
         try {
@@ -77,8 +78,10 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
         }
         
         if(user){
-            let permitted = await auth.checkUserRole(guid);
-            if(permitted){
+            console.log('guid', guid)
+            // let permitted = await auth.checkUserRole(guid);
+            // console.log('permitted', permitted)
+            // if(permitted){
 
                 const base = auth.determineBaseUrl(guid);
 
@@ -132,10 +135,10 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                     console.log(colors.red('Either the preview key is not present in your instance or you need to specify the baseUrl parameter as an input based on the location. Please refer the docs for the Base Url.'));
                 }
 
-            }
-            else{
-                console.log(colors.red('You do not have required permissions on the instance to perform the pull operation.'));
-            }
+                // }
+                // else{
+                //     console.log(colors.red('You do not have required permissions on the instance to perform the pull operation.'));
+                // }
 
         }
         else{
