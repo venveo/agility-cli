@@ -58,3 +58,23 @@ The content item creation process:
 -   [ ] **Address Dynamic Page Constraint (Investigation):** Verify parent page ID mapping in `page-pusher.ts`. The constraint itself might be valid due to target instance state or a backend rule. The CLI fix will focus on ensuring correct data is sent. If the constraint error persists after fixing the `referenceName`, it might require manual intervention or different handling (e.g., skipping, warning).
 -   [ ] **Test:** Rerun the push process with the fixes to confirm errors are resolved.
 -   [ ] **Update Manifest:** Mark tasks as complete.
+
+## Push Command UI Enhancement (Blessed/Blessed-Contrib)
+
+- [ ] **Phase 1: Setup & Basic Layout**
+    - [x] Read `src/push_new.ts` to understand current logic.
+    - [x] Initialize `blessed` screen.
+    - [x] Implement a two-column layout using `blessed-contrib` Grid.
+    - [x] Create placeholder boxes for the left (progress) and right (logs) columns.
+- [x] **Phase 2: Progress Bar Integration**
+    - [x] Identify points in the push logic where progress can be tracked (e.g., file processing, API calls).
+    - [x] Implement `blessed-contrib` ProgressBar or similar widget(s) in the left column.
+    - [x] Hook progress updates from the push logic into the UI.
+- [x] **Phase 3: Logging Integration**
+    - [x] Implement a `blessed` Log widget or scrollable Box in the right column.
+    - [x] Capture or redirect application logs to the logging widget.
+- [ ] **Phase 4: Refinement & Testing**
+    - [ ] Ensure smooth UI updates and rendering.
+    - [ ] Test error handling and edge cases.
+    - [ ] Refine layout and appearance.
+    - [x] Refine layout and appearance (Horizontal progress bars, color coding, log scrolling verification).

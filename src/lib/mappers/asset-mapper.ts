@@ -1,5 +1,5 @@
 import * as mgmtApi from '@agility/management-sdk';
-import { ReferenceMapper } from './mapper';
+import { ReferenceMapper } from '../mapper';
 
 export class AssetMapper {
     private referenceMapper: ReferenceMapper;

@@ -1,5 +1,5 @@
 import * as mgmtApi from "@agility/management-sdk";
-import { ReferenceMapper } from "./mapper";
+import { ReferenceMapper } from "../mapper";
 import ansiColors from "ansi-colors";
 
 function handleImage(value: any, referenceMapper: ReferenceMapper): any {
@@ -17,10 +17,7 @@ function handleContentId(fieldName: string, value: any, referenceMapper: Referen
 
   if (contentRef?.target) {
     return contentRef.target.contentID;
-  } else {
-    // console.log("Couldn't find content ID mapping for key:", fieldName, " - value:", value, " maintaining original value");
-  }
-
+  } 
   return value;
 }
 
@@ -143,18 +140,14 @@ function handleSpecialFields(value: any, referenceMapper: ReferenceMapper, field
     if (typeof value !== 'object') { 
         if (fieldName === "url") {
             const image = handleImage(value, referenceMapper);
-            // Optional: Log mapping details
-            // if(image === value || image === null) { ... } else { ... }
             return image;
         }
         // Handle string categoryID (like in Post items)
         if((fieldName === "categoryid" || fieldName === "categoryID") && typeof value === 'string') {
-            // console.log(ansiColors.blue("MAP CATEGORY ID STRING"));
             const originalId = parseInt(value, 10);
             if (!isNaN(originalId)) {
                 const targetId = handleContentId(fieldName, originalId, referenceMapper);
                  if (targetId !== originalId) {
-                    //  console.log(ansiColors.magenta(`Mapping string field ${fieldName}: ${originalId} -> ${targetId}`));
                      return targetId.toString(); // Return target ID as string
                  }
             }
@@ -193,7 +186,6 @@ function handleSpecialFields(value: any, referenceMapper: ReferenceMapper, field
         // THIS IS DIFFICULT WITHOUT PARENT CONTEXT.
         // --- A SIMPLER, LESS SAFE APPROACH (applied directly to the object `value`): ---
         if (fieldName === 'posts' && 'referencename' in value && 'fulllist' in value && value.referencename === 'posts') {
-            // console.log(ansiColors.magenta(`Simplifying PostsListing field '${fieldName}' to referenceName: ${value.referencename}`));
             return value.referencename; // Simplify to just the string "posts"
         }
         // *** Specific Handling for PostsListing.posts END ***

@@ -1,22 +1,13 @@
 const FormData = require("form-data");
 import { Auth } from "../../auth";
-import * as mgmtApi from "@agility/management-sdk";
-
-import { type ContentListFilterModel } from "@agility/management-sdk/dist/models/contentListFilterModel";
-
 import { fileOperations } from "../../fileOperations";
-import { localePrompt } from "../locale-prompt";
-import { channelPrompt } from "../channel-prompt";
-import { isPreviewPrompt } from "../isPreview-prompt";
-import inquirer from "inquirer";
+import { localePrompt } from "../prompts/locale-prompt";
 import * as path from "path";
 import ansiColors = require("ansi-colors");
-import { homePrompt } from "../home-prompt";
-import fileSystemPrompt from "../file-system-prompt";
-// import chalkAnimation from 'chalk-animation';
-// const chalkAnimation = import('chalk-animation');
+import { homePrompt } from "../prompts/home-prompt";
+import fileSystemPrompt from "../prompts/file-system-prompt";
 import { AgilityInstance } from "../../types/instance";
-import { forceDevMode } from "../..";
+import { forceDevMode } from "../../index";
 const axios = require("axios");
 
 let AI_ENDPOINT_DEV:string = "https://manager-bff-qa-git-cli-ai.publishwithagility.com/api/ai/cli/typescript-models";
@@ -28,8 +19,6 @@ export default async function generateTypes(selectedInstance: AgilityInstance) {
   
   let AI_ENDPOINT: string = forceDevMode ? AI_ENDPOINT_DEV : AI_ENDPOINT_PROD;
 
-
-  // console.log('AI_ENDPOINT', AI_ENDPOINT);
 
   const locale = await localePrompt(selectedInstance);
   const filesPath = await fileSystemPrompt();

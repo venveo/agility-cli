@@ -1,7 +1,7 @@
 import inquirer from 'inquirer';
-import { Auth } from '../auth';
-import { fileOperations } from '../fileOperations';
-import { AgilityInstance } from '../types/instance';
+import { Auth } from '../../auth';
+import { fileOperations } from '../../fileOperations';
+import { AgilityInstance } from '../../types/instance';
 import * as mgmtApi  from '@agility/management-sdk';
 import { getBaseURLfromGUID } from './base-url-prompt';
 const FormData = require("form-data");
@@ -41,7 +41,6 @@ export async function localePrompt(selectedInstance:AgilityInstance) {
     return answers.locales;
 
     } catch (error) {
-        // console.error("Error fetching locales:", error);
         
         return null;
     }

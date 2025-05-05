@@ -5,14 +5,14 @@ import * as mgmtApi from "@agility/management-sdk";
 import { type ContentListFilterModel } from "@agility/management-sdk/dist/models/contentListFilterModel";
 
 import { fileOperations } from "../../fileOperations";
-import { localePrompt } from "../locale-prompt";
-import { channelPrompt } from "../channel-prompt";
-import { isPreviewPrompt } from "../isPreview-prompt";
+import { localePrompt } from "../prompts/locale-prompt";
+import { channelPrompt } from "../prompts/channel-prompt";
+import { isPreviewPrompt } from "../prompts/isPreview-prompt";
 import inquirer from "inquirer";
 import * as path from "path";
 import ansiColors = require("ansi-colors");
-import { homePrompt } from "../home-prompt";
-import fileSystemPrompt from "../file-system-prompt";
+import { homePrompt } from "../prompts/home-prompt";
+import fileSystemPrompt from "../prompts/file-system-prompt";
 
 
 
@@ -85,15 +85,9 @@ export default async function generateReactComponents(selectedInstance: AgilityI
     });
 
     reader.on("end", () => {
-      // rainbow.stop();
-      // const modelsFilePath = path.join(filesPath, "models.ts");
    
       console.log(result)
-      // const cleanedResult = result.replace(/^```typescript\s*/, "").replace(/```$/, "");
-      // code.createFile(modelsFilePath, cleanedResult);
-      // console.log(ansiColors.green("🚀 TypeScript models generated successfully!"));
-      // console.log(`\nResponse written to ${modelsFilePath}`);
-      // return true;
+   
     });
 
     return await new Promise((resolve) => reader.on("end", resolve));

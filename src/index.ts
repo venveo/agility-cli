@@ -4,7 +4,6 @@
 //     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 // }
 
-
 import * as yargs from "yargs";
 import { Auth } from "./auth";
 import { fileOperations } from "./fileOperations";
@@ -19,39 +18,40 @@ const FormData = require("form-data");
 const cliProgress = require("cli-progress");
 const colors = require("ansi-colors");
 const inquirer = require("inquirer");
-inquirer.registerPrompt('search-list', require('inquirer-search-list'));
+inquirer.registerPrompt("search-list", require("inquirer-search-list"));
 import { createMultibar } from "./multibar";
 import { modelSync } from "./modelSync";
 import { FilterData, ModelFilter } from "./types/modelFilter";
 import { create } from "domain";
-import { homePrompt } from "./prompts/home-prompt";
-import { generateEnv } from "./prompts/utilities/generate-env";
+import { homePrompt } from "./lib/prompts/home-prompt";
+import { generateEnv } from "./lib/utilities/generate-env";
 import { exit } from "process";
 import ansiColors from "ansi-colors";
-import { instancesPrompt } from "./prompts/instance-prompt";
+import { instancesPrompt } from "./lib/prompts/instance-prompt";
 import { AgilityInstance } from "./types/instance";
 import { websiteListing } from "types/websiteListing";
 import { syncNew } from "./sync_new";
 import { assetNew } from "./asset_new";
 import { containerNew } from "./container_new";
 import { modelNew } from "./model_new";
-import Clean from "./prompts/instances/clean";
-import { instanceSelector } from "./prompts/instances/instance-list";
-import { localePrompt } from "./prompts/locale-prompt";
+import Clean from "./clean";
+import { instanceSelector } from "./lib/instances/instance-list";
+import { localePrompt } from "./lib/prompts/locale-prompt";
 
 let auth: Auth;
 export let forceDevMode: boolean = false;
 export let forceLocalMode: boolean = false;
-export let localServer: string
+export let localServer: string;
 export let token: string = null;
-
+export let blessedUIEnabled: boolean = false;
+export let isAgilityDev: boolean = false;
 
 // Configure SSL verification based on CLI mode
 function configureSSL() {
-    if (forceLocalMode) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        console.warn('\nWarning: SSL certificate verification is disabled for development/local mode');
-    }
+  if (forceLocalMode) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    console.warn("\nWarning: SSL certificate verification is disabled for development/local mode");
+  }
 }
 
 let options: mgmtApi.Options;
@@ -73,60 +73,61 @@ yargs.command({
       type: "boolean",
       default: false,
     },
+    blessed: {
+      describe: "Use experimental Blessed UI for push/sync operations.",
+      type: "boolean",
+      default: false,
+    },
   },
   handler: async function (argv) {
+    blessedUIEnabled = argv.blessed as boolean;
     let auth = new Auth();
 
-    if(argv.dev){
+    if (argv.dev) {
       forceDevMode = true;
     }
 
-    if(argv.local){
+    if (argv.local) {
       forceLocalMode = true;
     }
 
     configureSSL();
 
     const isAuthorized = await auth.checkAuthorization();
-    if(!isAuthorized) {
+    if (!isAuthorized) {
       return;
     }
-    
-      const envCheck = auth.checkForEnvFile();
-      if (envCheck.hasEnvFile && envCheck.guid && !forceLocalMode && !forceDevMode) {
-        try {
-          let user = await auth.getUser(envCheck.guid);
-          console.log('User:',user)
-          let currentWebsite = user.websiteAccess.find((website: websiteListing) => website.guid === envCheck.guid);
-          
-          if (!currentWebsite) {
-            console.error('No matching website found for the provided GUID');
-            return;
-          }
 
-          const instance: AgilityInstance = {
-            guid: envCheck.guid,
-            previewKey: '',
-            fetchKey: '',
-            websiteDetails: currentWebsite
-          };
+    const envCheck = auth.checkForEnvFile();
+    if (envCheck.hasEnvFile && envCheck.guid && !forceLocalMode && !forceDevMode) {
+      try {
+        let user = await auth.getUser(envCheck.guid);
+        let currentWebsite = user.websiteAccess.find((website: websiteListing) => website.guid === envCheck.guid);
 
-          console.log('------------------------------------------------');
-          console.log(colors.green('●'), colors.green(`${currentWebsite.displayName}`), colors.white(`${instance.guid}`));
-          console.log('------------------------------------------------');
-        
-          await instancesPrompt(instance, null);
-        } catch (error) {
-          console.error('Error:', error.message);
-          console.log('Please try logging in again with: agility login');
+        if (!currentWebsite) {
+          console.error("No matching website found for the provided GUID");
+          return;
         }
-      } else {
-        // If no env file or no GUID found, go to homePrompt
-        homePrompt();
+
+        const instance: AgilityInstance = {
+          guid: envCheck.guid,
+          previewKey: "",
+          fetchKey: "",
+          websiteDetails: currentWebsite,
+        };
+
+        console.log("------------------------------------------------");
+        console.log(colors.green("●"), colors.green(`${currentWebsite.displayName}`), colors.white(`${instance.guid}`));
+        console.log("------------------------------------------------");
+
+        await instancesPrompt(instance, null);
+      } catch (error) {
+        console.error("Error:", error.message);
+        console.log("Please try logging in again with: agility login");
       }
-    // } else {
-    //   console.log('Other commands specified, skipping homePrompt');
-    // }
+    } else {
+      homePrompt();
+    }
   },
 });
 
@@ -159,7 +160,7 @@ yargs.command({
       describe: "Logout from local mode",
       type: "boolean",
       default: false,
-    }
+    },
   },
   handler: async function (argv) {
     let auth = new Auth();
@@ -174,819 +175,801 @@ yargs.command({
 });
 
 yargs.command({
-    command: "clean",
-    describe: "Scrub all the data out of an instance",
-    handler: async function (argv) {
-
-        forceLocalMode = true;
-
-        configureSSL();
-        let auth = new Auth();
-        const isAuthorized = await auth.checkAuthorization();
-        if(isAuthorized){
-
-            // this is for testing purposes, we should prompt for this
-            // const selectedInstance = await instanceSelector();
-            // const locale = await localePrompt(selectedInstance);
-            const instance = {
-            guid: '95dc2671-d',
-            previewKey: '', 
-            fetchKey: '',
-            websiteDetails: {
-              orgCode: null,
-              orgName: null,
-              websiteName: null,
-              websiteNameStripped: null,
-              displayName: null,
-              guid: '95dc2671-d',
-              websiteID: null,
-              isCurrent: null,
-              managerUrl: null,
-              version: null,
-              isOwner: null,
-              isDormant: null,
-              isRestoring: null
-            }
-            }
-
-            const clean = new Clean(instance,'en-us');
-            await clean.cleanAll();
-
-
-        }
-
-
-
-    }
-})
-
-yargs.command({
-    command: "genenv",
-    describe: "Generate an env file for your instance.",
-    
-    handler: async function (argv) {
-        let auth = new Auth();
-        const isAuthorized = await auth.checkAuthorization();
-        if(isAuthorized){
-            const result = await generateEnv();
-            if(result){
-                process.exit(0);
-            }
-        } 
-        else {
-            console.log(colors.red("You are not authorized to generate an env file."));
-            return;
-        }
+  command: "clean",
+  describe: "Scrub all the data out of an instance",
+  builder: {
+    blessed: {
+      describe: "Use experimental Blessed UI for push/sync operations.",
+      type: "boolean",
+      default: false,
     },
+  },
+  handler: async function (argv) {
+    blessedUIEnabled = argv.blessed as boolean;
+    forceLocalMode = true;
+    configureSSL();
+    let auth = new Auth();
+    const isAuthorized = await auth.checkAuthorization();
+    if (isAuthorized) {
+      const selectedInstance = await instanceSelector();
+      const locale = await localePrompt(selectedInstance);
+      const clean = new Clean(selectedInstance, locale);
+      await clean.cleanAll();
+    }
+  },
 });
-    
-  
-yargs.command({
-  command: 'sync-models',
-  describe: 'Sync Models locally.',
-  builder: {
-      sourceGuid: {
-          describe: 'Provide the source guid to pull models from your source instance.',
-          demandOption: false,
-          type: 'string'
-      },
-      targetGuid: {
-          describe: 'Provide the target guid to push models to your destination instance.',
-          demandOption: false,
-          type: 'string'
-      },
-      pull: {
-          describe: 'Provide the value as true or false to perform an instance pull to sync models.',
-          demandOption: false,
-          type: 'boolean'
-      },
-      folder: {
-          describe: 'Specify the path of the folder where models and template folders are present for model sync. If no value provided, the default folder will be agility-files.',
-          demandOption: false,
-          type: 'string'
-      },
-      dryRun: {
-          describe: 'Provide the value as true or false to perform a dry run for model sync.',
-          demandOption: false,
-          type: 'boolean'
-      },
-      filter: {
-          describe: 'Specify the path of the filter file. Ex: C:\Agility\myFilter.json.',
-          demandOption: false,
-          type: 'string'
-      }
-  },
-  handler: async function(argv) {
-      auth = new Auth();
-      let code = new fileOperations();
-      let codeFileStatus = code.codeFileExists();
-      if(codeFileStatus){
-          let data = JSON.parse(code.readTempFile('code.json'));
-          
-          const form = new FormData();
-          form.append('cliCode', data.code);
-          let guid: string = argv.sourceGuid as string;
-          let targetGuid: string = argv.targetGuid as string;
-          let instancePull: boolean = argv.pull as boolean;
-          let dryRun: boolean = argv.dryRun as boolean;
-          let filterSync: string = argv.filter as string;
-          let folder: string = argv.folder as string;
 
-          if(guid === undefined && targetGuid === undefined){
-              console.log(colors.red('Please provide a source guid or target guid to perform the operation.'));
+yargs.command({
+  command: "genenv",
+  describe: "Generate an env file for your instance.",
+  builder: {
+    blessed: {
+      describe: "Use experimental Blessed UI for push/sync operations.",
+      type: "boolean",
+      default: false,
+    },
+  },
+  handler: async function (argv) {
+    blessedUIEnabled = argv.blessed as boolean;
+    let auth = new Auth();
+    const isAuthorized = await auth.checkAuthorization();
+    if (isAuthorized) {
+      const result = await generateEnv();
+      if (result) {
+        process.exit(0);
+      }
+    } else {
+      console.log(colors.red("You are not authorized to generate an env file."));
+      return;
+    }
+  },
+});
+
+yargs.command({
+  command: "sync-models",
+  describe: "Sync Models locally.",
+  builder: {
+    sourceGuid: {
+      describe: "Provide the source guid to pull models from your source instance.",
+      demandOption: false,
+      type: "string",
+    },
+    targetGuid: {
+      describe: "Provide the target guid to push models to your destination instance.",
+      demandOption: false,
+      type: "string",
+    },
+    pull: {
+      describe: "Provide the value as true or false to perform an instance pull to sync models.",
+      demandOption: false,
+      type: "boolean",
+    },
+    folder: {
+      describe:
+        "Specify the path of the folder where models and template folders are present for model sync. If no value provided, the default folder will be agility-files.",
+      demandOption: false,
+      type: "string",
+    },
+    dryRun: {
+      describe: "Provide the value as true or false to perform a dry run for model sync.",
+      demandOption: false,
+      type: "boolean",
+    },
+    filter: {
+      describe: "Specify the path of the filter file. Ex: C:AgilitymyFilter.json.",
+      demandOption: false,
+      type: "string",
+    },
+  },
+  handler: async function (argv) {
+    blessedUIEnabled = argv.blessed as boolean;
+    auth = new Auth();
+    let code = new fileOperations();
+    let codeFileStatus = code.codeFileExists();
+    if (codeFileStatus) {
+      let data = JSON.parse(code.readTempFile("code.json"));
+
+      const form = new FormData();
+      form.append("cliCode", data.code);
+      let guid: string = argv.sourceGuid as string;
+      let targetGuid: string = argv.targetGuid as string;
+      let instancePull: boolean = argv.pull as boolean;
+      let dryRun: boolean = argv.dryRun as boolean;
+      let filterSync: string = argv.filter as string;
+      let folder: string = argv.folder as string;
+
+      if (guid === undefined && targetGuid === undefined) {
+        console.log(colors.red("Please provide a source guid or target guid to perform the operation."));
+        return;
+      }
+
+      let authGuid: string = "";
+
+      if (guid !== undefined) {
+        authGuid = guid;
+      } else {
+        authGuid = targetGuid;
+      }
+
+      let models: mgmtApi.Model[] = [];
+
+      let templates: mgmtApi.PageModel[] = [];
+
+      let multibar = createMultibar({ name: "Sync Models" });
+
+      if (dryRun === undefined) {
+        dryRun = false;
+      }
+      if (instancePull === undefined) {
+        instancePull = false;
+      }
+      if (filterSync === undefined) {
+        filterSync = "";
+      }
+      if (folder === undefined) {
+        folder = "agility-files";
+      }
+      let user = await auth.getUser(authGuid);
+
+      if (!instancePull) {
+        if (!code.checkBaseFolderExists(folder)) {
+          console.log(colors.red(`To proceed with the command the folder ${folder} should exist.`));
+          return;
+        }
+      }
+
+      if (user) {
+        if (guid === undefined) {
+          guid = "";
+        }
+        if (targetGuid === undefined) {
+          targetGuid = "";
+        }
+        let sourcePermitted = await auth.checkUserRole(guid);
+        let targetPermitted = await auth.checkUserRole(targetGuid);
+        if (guid === "") {
+          sourcePermitted = true;
+        }
+        if (targetGuid === "") {
+          targetPermitted = true;
+        }
+        let modelPush = new modelSync(options, multibar);
+        if (sourcePermitted && targetPermitted) {
+          if (instancePull) {
+            if (guid === "") {
+              console.log(colors.red("Please provide the sourceGuid of the instance for pull operation."));
               return;
-          }
+            }
+            console.log(colors.yellow("Pulling models from your instance. Please wait..."));
+            code.cleanup(folder);
+            code.createBaseFolder(folder);
+            code.createLogFile("logs", "instancelog", folder);
+            let modelPull = new model(options, multibar);
 
-          let authGuid: string = '';
+            let templatesPull = new sync(guid, "syncKey", "locale", "channel", options, multibar);
 
-          if(guid !== undefined){
-              authGuid = guid;
-          }
-          else{
-              authGuid = targetGuid;
-          }
-          
+            await modelPull.getModels(guid, folder);
+            await templatesPull.getPageTemplates(folder);
+            multibar.stop();
 
-          let models: mgmtApi.Model[] = [];
-
-          let templates: mgmtApi.PageModel[] = [];
-
-          let multibar = createMultibar({name: 'Sync Models'});
-
-          if(dryRun === undefined){
-              dryRun = false;
+            if (targetGuid === "") {
+              return;
+            }
           }
-          if(instancePull === undefined){
-              instancePull = false;
+          if (filterSync) {
+            if (!code.checkFileExists(filterSync)) {
+              console.log(colors.red(`Please check the filter file is present at ${filterSync}.`));
+              return;
+            } else {
+              let file = code.readFile(`${filterSync}`);
+              const jsonData: FilterData = JSON.parse(file);
+              const modelFilter = new ModelFilter(jsonData);
+              models = await modelPush.validateAndCreateFilterModels(modelFilter.filter.Models, folder);
+              templates = await modelPush.validateAndCreateFilterTemplates(
+                modelFilter.filter.Templates,
+                "locale",
+                folder
+              );
+            }
           }
-          if(filterSync === undefined){
-              filterSync = '';
-          }
-          if(folder === undefined){
-              folder = 'agility-files';
-          }
-          let user = await auth.getUser(authGuid);
+          if (dryRun) {
+            if (targetGuid === "") {
+              console.log(
+                colors.red(
+                  "Please provide the targetGuid parameter a valid instance guid to perform the dry run operation."
+                )
+              );
+              return;
+            }
+            console.log(colors.yellow("Running a dry run on models, please wait..."));
+            if (code.folderExists("models-sync")) {
+              code.cleanup(`${folder}/models-sync`);
+            }
 
-          if(!instancePull){
-              if(!code.checkBaseFolderExists(folder)){
-                  console.log(colors.red(`To proceed with the command the folder ${folder} should exist.`));
-                  return;
+            let containerRefs = await modelPush.logContainers(models);
+            if (containerRefs) {
+              if (containerRefs.length > 0) {
+                console.log(
+                  colors.yellow(
+                    "Please review the content containers in the containerReferenceNames.json file in the logs folder. They should be present in the target instance."
+                  )
+                );
               }
+            }
+            await modelPush.dryRun(guid, "locale", targetGuid, models, templates, folder);
+          } else {
+            if (targetGuid === "") {
+              console.log(
+                colors.red(
+                  "Please provide the targetGuid parameter a valid instance guid to perform the model sync operation."
+                )
+              );
+              return;
+            }
+            console.log(colors.yellow("Syncing Models from your instance..."));
+            multibar = createMultibar({ name: "Sync Models" });
+            let containerRefs = await modelPush.logContainers(models);
+            if (containerRefs) {
+              if (containerRefs.length > 0) {
+                console.log(
+                  colors.yellow(
+                    "Please review the content containers in the containerReferenceNames.json file in the logs folder. They should be present in the target instance."
+                  )
+                );
+              }
+            }
+            await modelPush.syncProcess(targetGuid, "locale", models, templates, folder);
           }
-
-          if(user){
-              if(guid === undefined){
-                  guid = '';
-              }
-              if(targetGuid === undefined){
-                  targetGuid = '';
-              }
-              let sourcePermitted = await auth.checkUserRole(guid);
-              let targetPermitted = await auth.checkUserRole(targetGuid);
-              if(guid === ''){
-                  sourcePermitted = true;
-              }
-              if(targetGuid === ''){
-                  targetPermitted = true;
-              }
-              let modelPush = new modelSync(options, multibar);
-              if(sourcePermitted && targetPermitted){
-
-                  if(instancePull){
-                      if(guid === ''){
-                          console.log(colors.red('Please provide the sourceGuid of the instance for pull operation.'));
-                          return;
-                      }
-                      console.log(colors.yellow('Pulling models from your instance. Please wait...'));
-                      code.cleanup(folder);
-                      code.createBaseFolder(folder);
-                      code.createLogFile('logs', 'instancelog', folder);
-                      let modelPull = new model(options, multibar);
-
-                      let templatesPull = new sync(guid, 'syncKey', 'locale', 'channel', options, multibar);
-              
-                      await modelPull.getModels(guid, folder);
-                      await templatesPull.getPageTemplates(folder);
-                      multibar.stop();
-
-                      if(targetGuid === ''){
-                          return;
-                      }
-                  }
-                  if(filterSync){
-                      if(!code.checkFileExists(filterSync)){
-                          console.log(colors.red(`Please check the filter file is present at ${filterSync}.`));
-                          return;
-                      }
-                      else{
-                          let file = code.readFile(`${filterSync}`);
-                          const jsonData: FilterData = JSON.parse(file);
-                          const modelFilter = new ModelFilter(jsonData);
-                          models = await modelPush.validateAndCreateFilterModels(modelFilter.filter.Models, folder);
-                          templates = await modelPush.validateAndCreateFilterTemplates(modelFilter.filter.Templates, 'locale', folder);
-                      }
-                  }
-                  if(dryRun){
-                      if(targetGuid === ''){
-                          console.log(colors.red('Please provide the targetGuid parameter a valid instance guid to perform the dry run operation.'));
-                          return;
-                      }
-                      console.log(colors.yellow('Running a dry run on models, please wait...'));
-                      if(code.folderExists('models-sync')){
-                          code.cleanup(`${folder}/models-sync`);
-                      }
-
-                      let containerRefs =  await modelPush.logContainers(models);
-                      if(containerRefs){
-                          if(containerRefs.length > 0){
-                              console.log(colors.yellow('Please review the content containers in the containerReferenceNames.json file in the logs folder. They should be present in the target instance.'));
-                          }
-                      }
-                      await modelPush.dryRun(guid, 'locale', targetGuid, models, templates, folder);
-                  }
-                  else{
-                      if(targetGuid === ''){
-                          console.log(colors.red('Please provide the targetGuid parameter a valid instance guid to perform the model sync operation.'));
-                          return;
-                      }
-                      console.log(colors.yellow('Syncing Models from your instance...'));
-                      multibar = createMultibar({name: 'Sync Models'});
-                      let containerRefs =  await modelPush.logContainers(models);
-                      if(containerRefs){
-                          if(containerRefs.length > 0){
-                              console.log(colors.yellow('Please review the content containers in the containerReferenceNames.json file in the logs folder. They should be present in the target instance.'));
-                          }
-                      }
-                      await modelPush.syncProcess(targetGuid, 'locale', models, templates, folder);
-                  }
-                  
-              }
-              else{
-                  console.log(colors.red('You do not have the required permissions to perform the model sync operation.'));
-              }
-              
-          }
-          else{
-              console.log(colors.red('Please authenticate first to perform the sync models operation.'));
-          }
-
-         
+        } else {
+          console.log(colors.red("You do not have the required permissions to perform the model sync operation."));
+        }
+      } else {
+        console.log(colors.red("Please authenticate first to perform the sync models operation."));
       }
-      else{
-          console.log(colors.red('Please authenticate first to perform the sync models operation.'));
-      }
-  }
-})
+    } else {
+      console.log(colors.red("Please authenticate first to perform the sync models operation."));
+    }
+  },
+});
 
 yargs.command({
-  command: 'model-pull',
-  describe: 'Pull models locally.',
+  command: "model-pull",
+  describe: "Pull models locally.",
   builder: {
-      sourceGuid: {
-          describe: 'Provide the source guid to pull models from your source instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      folder: {
-          describe: 'Specify the path of the folder where models and template folders are present for model pull.',
-          demandOption: false,
-          type: 'string'
-      }
+    sourceGuid: {
+      describe: "Provide the source guid to pull models from your source instance.",
+      demandOption: true,
+      type: "string",
+    },
+    folder: {
+      describe: "Specify the path of the folder where models and template folders are present for model pull.",
+      demandOption: false,
+      type: "string",
+    },
   },
-  handler: async function(argv) {
-      auth = new Auth();
-      let code = new fileOperations();
-      let codeFileStatus = code.codeFileExists();
-      if(codeFileStatus){          
-       
-          let guid: string = argv.sourceGuid as string;
-          let folder: string = argv.folder as string;
-          let multibar = createMultibar({name: 'Model Pull'});
+  handler: async function (argv) {
+    blessedUIEnabled = argv.blessed as boolean;
+    auth = new Auth();
+    let code = new fileOperations();
+    let codeFileStatus = code.codeFileExists();
+    if (codeFileStatus) {
+      let guid: string = argv.sourceGuid as string;
+      let folder: string = argv.folder as string;
+      let multibar = createMultibar({ name: "Model Pull" });
 
-          if(folder === undefined){
-              folder = 'agility-files';
-          }
-
-          let user = await auth.getUser(guid);
-
-          if(user){
-              let sourcePermitted = await auth.checkUserRole(guid);
-
-              if(sourcePermitted){
-                  code.cleanup(folder);
-                  code.createBaseFolder(folder);
-                  code.createLogFile('logs', 'instancelog', folder);
-                  console.log(colors.yellow('Pulling Models from your instance...'));
-                  let modelPull = new model(options, multibar);
-
-                  let templatesPull = new sync(guid, 'syncKey', 'locale', 'channel', options, multibar);
-          
-                  await modelPull.getModels(guid, folder);
-                  await templatesPull.getPageTemplates(folder);
-                  multibar.stop();
-
-              }
-              else{
-                  console.log(colors.red('You do not have the required permissions to perform the model pull operation.'));
-              }
-              
-          }
-          else{
-              console.log(colors.red('Please authenticate first to perform the pull operation.'));
-          }
-
-         
+      if (folder === undefined) {
+        folder = "agility-files";
       }
-      else{
-          console.log(colors.red('Please authenticate first to perform the pull operation.'));
-      }
-  }
-})
-
-yargs.command({
-  command: 'pull',
-  describe: 'Pull your Instance',
-  builder: {
-      guid: {
-          describe: 'Provide guid to pull your instance. If not provided, will use AGILITY_GUID from .env file if available.',
-          demandOption: false,
-          type: 'string'
-      },
-      locale: {
-          describe: 'Provide the locale to pull your instance. If not provided, will use AGILITY_LOCALES from .env file if available.',
-          demandOption: false,
-          type: 'string'
-      },
-      channel: {
-          describe: 'Provide the channel to pull your instance. If not provided, will use AGILITY_SITEMAP from .env file if available.',
-          demandOption: false,
-          type: 'string'
-      },
-      baseUrl: {
-          describe: 'Specify the base url of your instance.',
-          demandOption: false,
-          type: 'string'
-      },
-      preview: {
-          describe: 'Whether to pull from preview or live environment',
-          demandOption: false,
-          type: 'boolean',
-          default: true
-      },
-      elements: {
-          describe: 'Comma-separated list of elements to pull (Pages,Models,Content,Assets,Galleries)',
-          demandOption: false,
-          type: 'string',
-          default: 'Pages,Models,Content,Assets,Galleries'
-      }
-  },
-  handler: async function(argv) {
-      let auth = new Auth();
-      const isAuthorized = await auth.checkAuthorization();
-      if(!isAuthorized) {
-          return;
-      }
-
-      // Get token and set up options
-      const token = await auth.getToken();
-      options = new mgmtApi.Options();
-      options.token = token;
-
-      let code = new fileOperations();
-      let guid: string = argv.guid as string;
-      let locale: string = argv.locale as string;
-      let channel: string = argv.channel as string;
-      let userBaseUrl: string = argv.baseUrl as string;
-      let isPreview: boolean = argv.preview as boolean;
-      let elements: string[] = (argv.elements as string).split(',');
-
-      // Check for .env file values
-      const envCheck = auth.checkForEnvFile();
-      if (envCheck.hasEnvFile) {
-          if (!guid && envCheck.guid) {
-              guid = envCheck.guid;
-          }
-          if (!channel && envCheck.channel) {
-              channel = envCheck.channel;
-          }
-          if (!locale && envCheck.locales) {
-              locale = envCheck.locales[0];
-          }
-      }
-
-      // Validate required parameters
-      if (!guid) {
-          console.log(colors.red('Please provide a guid or ensure you are in a directory with a valid .env file containing a GUID.'));
-          return;
-      }
-
-      if (!channel) {
-          console.log(colors.red('Please provide a channel or ensure you are in a directory with a valid .env file containing a channel.'));
-          return;
-      }
-
-      let multibar = createMultibar({name: 'Pull'});
 
       let user = await auth.getUser(guid);
 
-      if(user){
-          let permitted = await auth.checkUserRole(guid);
-          if(permitted){
-              const base = auth.determineBaseUrl(guid);
-              let previewKey = await auth.getPreviewKey(guid, userBaseUrl ? userBaseUrl : base);
-              let fetchKey = await auth.getFetchKey(guid, userBaseUrl ? userBaseUrl : base);
-              let syncKey = isPreview ? previewKey : fetchKey;
+      if (user) {
+        let sourcePermitted = await auth.checkUserRole(guid);
 
-              if(syncKey){
-                  console.log(colors.yellow(`\nDownloading your instance to ${process.cwd()}/agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`));
+        if (sourcePermitted) {
+          code.cleanup(folder);
+          code.createBaseFolder(folder);
+          code.createLogFile("logs", "instancelog", folder);
+          console.log(colors.yellow("Pulling Models from your instance..."));
+          let modelPull = new model(options, multibar);
 
-                  let contentPageSync = new syncNew(guid, syncKey, locale, channel, options, multibar, isPreview);
-                  let assetsSync = new assetNew(options, multibar);
-                  let containerSync = new containerNew(options, multibar);
-                  let modelSync = new modelNew(options, multibar);
+          let templatesPull = new sync(guid, "syncKey", "locale", "channel", options, multibar);
 
-                  const syncTasks = [];
-
-                  if(elements.includes('Pages')){
-                      syncTasks.push(contentPageSync.sync(guid, locale, isPreview));
-                  }
-
-                  if(elements.includes('Models')){
-                      syncTasks.push(modelSync.getModels(guid, locale, isPreview));
-                  }
-
-                  if(elements.includes('Content')){
-                      syncTasks.push(containerSync.getContainers(guid, locale, isPreview));
-                  }
-
-                  if(elements.includes('Assets')){
-                      syncTasks.push(assetsSync.getAssets(guid, locale, isPreview));
-                  }
-
-                  if(elements.includes('Galleries')){
-                      syncTasks.push(assetsSync.getGalleries(guid, locale, isPreview));
-                  }
-
-                  const results = await Promise.all(syncTasks);
-                  if(results.some(result => result === false)){
-                    console.log(colors.red('An error occurred during the pull operation. Please check the logs for more information.'));
-                    process.exit(1);
-                  } else {
-                    multibar.stop();
-                    console.log(colors.green('\n✅ Download complete!\n'));
-                    process.exit(0);
-                  }
-                  
-              }
-              else{
-                  console.log(colors.red('Either the preview key is not present in your instance or you need to specify the baseUrl parameter as an input based on the location. Please refer the docs for the Base Url.'));
-              }
-          }
-          else{
-              console.log(colors.red('You do not have required permissions on the instance to perform the pull operation.'));
-          }
+          await modelPull.getModels(guid, folder);
+          await templatesPull.getPageTemplates(folder);
+          multibar.stop();
+        } else {
+          console.log(colors.red("You do not have the required permissions to perform the model pull operation."));
+        }
+      } else {
+        console.log(colors.red("Please authenticate first to perform the pull operation."));
       }
-      else{
-          console.log(colors.red('Please authenticate first to perform the pull operation.'));
-      }
-  }
-})
+    } else {
+      console.log(colors.red("Please authenticate first to perform the pull operation."));
+    }
+  },
+});
 
 yargs.command({
-  command: 'push',
-  describe: 'Push your Instance.',
+  command: "pull",
+  describe: "Pull your Instance",
   builder: {
-      guid: {
-          describe: 'Provide the target guid to push your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      locale: {
-          describe: 'Provide the locale to push your instance.',
-          demandOption: true,
-          type: 'string'
-      }
+    guid: {
+      describe:
+        "Provide guid to pull your instance. If not provided, will use AGILITY_GUID from .env file if available.",
+      demandOption: false,
+      type: "string",
+    },
+    locale: {
+      describe:
+        "Provide the locale to pull your instance. If not provided, will use AGILITY_LOCALES from .env file if available.",
+      demandOption: false,
+      type: "string",
+    },
+    channel: {
+      describe:
+        "Provide the channel to pull your instance. If not provided, will use AGILITY_SITEMAP from .env file if available.",
+      demandOption: false,
+      type: "string",
+    },
+    baseUrl: {
+      describe: "Specify the base url of your instance.",
+      demandOption: false,
+      type: "string",
+    },
+    preview: {
+      describe: "Whether to pull from preview or live environment",
+      demandOption: false,
+      type: "boolean",
+      default: true,
+    },
+    elements: {
+      describe: "Comma-separated list of elements to pull (Pages,Models,Content,Assets,Galleries)",
+      demandOption: false,
+      type: "string",
+      default: "Pages,Models,Content,Assets,Galleries",
+    },
   },
-  handler: async function(argv) {
-     let guid: string = argv.guid as string;
-     let locale: string = argv.locale as string;
-     let update: boolean = argv.update as boolean;
-     let code = new fileOperations();
-     auth = new Auth();
-     let codeFileStatus = code.codeFileExists();
+  handler: async function (argv) {
+    blessedUIEnabled = argv.blessed as boolean;
+    let auth = new Auth();
+    const isAuthorized = await auth.checkAuthorization();
+    if (!isAuthorized) {
+      return;
+    }
 
-     if(codeFileStatus){
+    // Get token and set up options
+    const token = await auth.getToken();
+    options = new mgmtApi.Options();
+    options.token = token;
+
+    let code = new fileOperations();
+    let guid: string = argv.guid as string;
+    let locale: string = argv.locale as string;
+    let channel: string = argv.channel as string;
+    let userBaseUrl: string = argv.baseUrl as string;
+    let isPreview: boolean = argv.preview as boolean;
+    let elements: string[] = (argv.elements as string).split(",");
+
+    // Check for .env file values
+    const envCheck = auth.checkForEnvFile();
+    if (envCheck.hasEnvFile) {
+      if (!guid && envCheck.guid) {
+        guid = envCheck.guid;
+      }
+      if (!channel && envCheck.channel) {
+        channel = envCheck.channel;
+      }
+      if (!locale && envCheck.locales) {
+        locale = envCheck.locales[0];
+      }
+    }
+
+    // Validate required parameters
+    if (!guid) {
+      console.log(
+        colors.red("Please provide a guid or ensure you are in a directory with a valid .env file containing a GUID.")
+      );
+      return;
+    }
+
+    if (!channel) {
+      console.log(
+        colors.red(
+          "Please provide a channel or ensure you are in a directory with a valid .env file containing a channel."
+        )
+      );
+      return;
+    }
+
+    let multibar = createMultibar({ name: "Pull" });
+
+    let user = await auth.getUser(guid);
+
+    if (user) {
+      let permitted = await auth.checkUserRole(guid);
+      if (permitted) {
+        const base = auth.determineBaseUrl(guid);
+        let previewKey = await auth.getPreviewKey(guid, userBaseUrl ? userBaseUrl : base);
+        let fetchKey = await auth.getFetchKey(guid, userBaseUrl ? userBaseUrl : base);
+        let syncKey = isPreview ? previewKey : fetchKey;
+
+        if (syncKey) {
+          console.log(
+            colors.yellow(
+              `\nDownloading your instance to ${process.cwd()}/agility-files/${guid}/${locale}/${
+                isPreview ? "preview" : "live"
+              }`
+            )
+          );
+
+          let contentPageSync = new syncNew(guid, syncKey, locale, channel, options, multibar, isPreview);
+          let assetsSync = new assetNew(options, multibar);
+          let containerSync = new containerNew(options, multibar);
+          let modelSync = new modelNew(options, multibar);
+
+          const syncTasks = [];
+
+          if (elements.includes("Pages")) {
+            syncTasks.push(contentPageSync.sync(guid, locale, isPreview));
+          }
+
+          if (elements.includes("Models")) {
+            syncTasks.push(modelSync.getModels(guid, locale, isPreview));
+          }
+
+          if (elements.includes("Content")) {
+            syncTasks.push(containerSync.getContainers(guid, locale, isPreview));
+          }
+
+          if (elements.includes("Assets")) {
+            syncTasks.push(assetsSync.getAssets(guid, locale, isPreview));
+          }
+
+          if (elements.includes("Galleries")) {
+            syncTasks.push(assetsSync.getGalleries(guid, locale, isPreview));
+          }
+
+          const results = await Promise.all(syncTasks);
+          if (results.some((result) => result === false)) {
+            console.log(
+              colors.red("An error occurred during the pull operation. Please check the logs for more information.")
+            );
+            process.exit(1);
+          } else {
+            multibar.stop();
+            console.log(colors.green("\n✅ Download complete!\n"));
+            process.exit(0);
+          }
+        } else {
+          console.log(
+            colors.red(
+              "Either the preview key is not present in your instance or you need to specify the baseUrl parameter as an input based on the location. Please refer the docs for the Base Url."
+            )
+          );
+        }
+      } else {
+        console.log(colors.red("You do not have required permissions on the instance to perform the pull operation."));
+      }
+    } else {
+      console.log(colors.red("Please authenticate first to perform the pull operation."));
+    }
+  },
+});
+
+yargs.command({
+  command: "push",
+  describe: "Push your Instance.",
+  builder: {
+    guid: {
+      describe: "Provide the target guid to push your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    locale: {
+      describe: "Provide the locale to push your instance.",
+      demandOption: true,
+      type: "string",
+    },
+  },
+  handler: async function (argv) {
+    let guid: string = argv.guid as string;
+    let locale: string = argv.locale as string;
+    let update: boolean = argv.update as boolean;
+    let code = new fileOperations();
+    auth = new Auth();
+    let codeFileStatus = code.codeFileExists();
+
+    if (codeFileStatus) {
       let agilityFolder = code.cliFolderExists();
-      if(agilityFolder){
-         
-          let multibar = createMultibar({name: 'Push'});
-         
-         
+      if (agilityFolder) {
+        let multibar = createMultibar({ name: "Push" });
 
-          let user = await auth.getUser(guid);
-          if(user){
-              let permitted = await auth.checkUserRole(guid);
-              if(permitted){
-                  console.log(colors.yellow('Pushing your instance...'));
-                  let pushSync = new push(options, multibar);
-                   await pushSync.pushInstance(guid, locale);
-              }
-              else{
-                  console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
-              }
-              
-          } else{
-              console.log(colors.red('Please authenticate first to perform the push operation.'));
-          }
-          
-      }
-      else{
-          console.log(colors.red('Please pull an instance first to push an instance.'));
-      }
-      
-     }
-     else {
-      console.log(colors.red('Please authenticate first to perform the push operation.'));
-     }
-  }
-})
-
-yargs.command({
-  command: 'updatecontent',
-  describe: 'Update a specific content ID or list of content IDs.',
-  builder: {
-      guid: {
-          describe: 'Provide the target guid to update your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      locale: {
-          describe: 'Provide the locale to update your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      contentItems: {
-          describe: 'What content items to update',
-          demandOption: false,
-          type: 'string',
-          default: 'all'
-      }
-  },
-  handler: async function(argv) {
-      const guid: string = argv.guid as string;
-      const locale: string = argv.locale as string;
-      const contentItems: string = argv.contentItems as string;
-
-      const code = new fileOperations();
-      auth = new Auth();
-      const codeFileStatus = code.codeFileExists();
-
-      if (codeFileStatus) {
-          const agilityFolder = code.cliFolderExists();
-          if (agilityFolder) {
-              const data = JSON.parse(code.readTempFile('code.json'));
-
-              const multibar = createMultibar({ name: 'Push' });
-
-              const form = new FormData();
-              form.append('cliCode', data.code);
-
-              const token = await auth.cliPoll(form, guid);
-
-              options = new mgmtApi.Options();
-              options.token = token.access_token;
-
-              const user = await auth.getUser(guid);
-              if (user) {
-                  const permitted = await auth.checkUserRole(guid);
-                  if (permitted) {
-                      console.log('-----------------------------------------------');
-                      console.log(colors.yellow('Updating your content items...'));
-                      console.log('Content items will be in preview state and changes will need to be published.');
-                      console.log('-----------------------------------------------');
-
-                      const pushSync = new push(options, multibar);
-                      const action = await pushSync.updateContentItems(guid, locale, contentItems);
-                      multibar.stop();
-
-                      const total = contentItems.split(',').length;
-                      const successful = action.successfulItems.length;
-
-                      if (successful < total) {
-                          console.log(colors.yellow(`${successful} out of ${total} content items were successfully updated.`));
-                          if (action.notOnDestination.length > 0) {
-                              console.log(colors.yellow('Not found on destination instance'), action.notOnDestination);
-                          }
-
-                          if (action.notOnSource.length > 0) {
-                              console.log(colors.yellow('Not found in local files'), action.notOnSource);
-                          }
-
-                          if (action.modelMismatch.length > 0) {
-                              console.log(colors.yellow('Model mismatch on destination instance'), action.modelMismatch);
-                          }
-                      } else {
-                          console.log(colors.green(`${successful} out of ${total} content items were successfully updated.`));
-                      }
-
-                  } else {
-                      console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
-                  }
-
-              } else {
-                  console.log(colors.red('Please authenticate first to perform the push operation.'));
-              }
-
+        let user = await auth.getUser(guid);
+        if (user) {
+          let permitted = await auth.checkUserRole(guid);
+          if (permitted) {
+            console.log(colors.yellow("Pushing your instance..."));
+            let pushSync = new push(options, multibar);
+            await pushSync.pushInstance(guid, locale);
           } else {
-              console.log(colors.red('Please pull an instance first to push an instance.'));
+            console.log(
+              colors.red("You do not have required permissions on the instance to perform the push operation.")
+            );
           }
-
+        } else {
+          console.log(colors.red("Please authenticate first to perform the push operation."));
+        }
       } else {
-          console.log(colors.red('Please authenticate first to perform the push operation.'));
+        console.log(colors.red("Please pull an instance first to push an instance."));
       }
-  }
+    } else {
+      console.log(colors.red("Please authenticate first to perform the push operation."));
+    }
+  },
 });
 
-
-
 yargs.command({
-  command: 'publishcontent',
-  describe: 'Publish a specific content ID or list of content IDs.',
+  command: "updatecontent",
+  describe: "Update a specific content ID or list of content IDs.",
   builder: {
-      guid: {
-          describe: 'Provide the target guid to update your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      locale: {
-          describe: 'Provide the locale to update your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      contentItems: {
-          describe: 'What content items to update',
-          demandOption: false,
-          type: 'string',
-          default: ''
-      }
+    guid: {
+      describe: "Provide the target guid to update your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    locale: {
+      describe: "Provide the locale to update your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    contentItems: {
+      describe: "What content items to update",
+      demandOption: false,
+      type: "string",
+      default: "all",
+    },
   },
-  handler: async function(argv) {
-      const guid: string = argv.guid as string;
-      const locale: string = argv.locale as string;
-      const contentItems: number[] = (argv.contentItems as string).split(',').map(Number);
+  handler: async function (argv) {
+    const guid: string = argv.guid as string;
+    const locale: string = argv.locale as string;
+    const contentItems: string = argv.contentItems as string;
 
-      const code = new fileOperations();
-      auth = new Auth();
-      const codeFileStatus = code.codeFileExists();
+    const code = new fileOperations();
+    auth = new Auth();
+    const codeFileStatus = code.codeFileExists();
 
-      if (codeFileStatus) {
-          const agilityFolder = code.cliFolderExists();
-          if (agilityFolder) {
-              const data = JSON.parse(code.readTempFile('code.json'));
+    if (codeFileStatus) {
+      const agilityFolder = code.cliFolderExists();
+      if (agilityFolder) {
+        const data = JSON.parse(code.readTempFile("code.json"));
 
-              const multibar = createMultibar({ name: 'Publish' });
-              const bar = await multibar.create(contentItems.length, 0, { name: 'Publishing'});
+        const multibar = createMultibar({ name: "Push" });
 
-              const form = new FormData();
-              form.append('cliCode', data.code);
+        const form = new FormData();
+        form.append("cliCode", data.code);
 
-              const token = await auth.cliPoll(form, guid);
+        const token = await auth.cliPoll(form, guid);
 
-              options = new mgmtApi.Options();
-              options.token = token.access_token;
+        options = new mgmtApi.Options();
+        options.token = token.access_token;
 
-              const user = await auth.getUser(guid);
-              if (user) {
-                  const permitted = await auth.checkUserRole(guid);
-                  if (permitted) {
-                      console.log('-----------------------------------------------');
-                      console.log(colors.yellow('Publishing your content items...'));
-                      console.log('-----------------------------------------------');
-                      const apiClient = new mgmtApi.ApiClient(options);
-                      
-                      for (const contentItem of contentItems) {
-                          try {
-                              await apiClient.contentMethods.publishContent(contentItem, guid, locale);
-                              await bar.increment();
-                          } catch (error) {
-                              console.error(`Failed to publish content item ${contentItem}:`, error);
-                          }
-                      }
+        const user = await auth.getUser(guid);
+        if (user) {
+          const permitted = await auth.checkUserRole(guid);
+          if (permitted) {
+            console.log("-----------------------------------------------");
+            console.log(colors.yellow("Updating your content items..."));
+            console.log("Content items will be in preview state and changes will need to be published.");
+            console.log("-----------------------------------------------");
 
-                      await bar.update(contentItems.length, { name: 'Published!' });
+            const pushSync = new push(options, multibar);
+            const action = await pushSync.updateContentItems(guid, locale, contentItems);
+            multibar.stop();
 
-                      await bar.stop();
+            const total = contentItems.split(",").length;
+            const successful = action.successfulItems.length;
 
-                      setTimeout(() => {
-                          console.log(colors.green('Content items have been published.'));
-                          exit(1);
-                      }, 1000);
-
-                  } else {
-                      console.log(colors.red('You do not have required permissions on the instance to perform the push operation.'));
-                      exit(1);
-                  }
-
-              } else {
-                  console.log(colors.red('Please authenticate first to perform the push operation.'));
-                  exit(1);
+            if (successful < total) {
+              console.log(colors.yellow(`${successful} out of ${total} content items were successfully updated.`));
+              if (action.notOnDestination.length > 0) {
+                console.log(colors.yellow("Not found on destination instance"), action.notOnDestination);
               }
 
-          } else {
-              console.log(colors.red('Please pull an instance first to push an instance.'));
-              exit(1)
-          }
+              if (action.notOnSource.length > 0) {
+                console.log(colors.yellow("Not found in local files"), action.notOnSource);
+              }
 
+              if (action.modelMismatch.length > 0) {
+                console.log(colors.yellow("Model mismatch on destination instance"), action.modelMismatch);
+              }
+            } else {
+              console.log(colors.green(`${successful} out of ${total} content items were successfully updated.`));
+            }
+          } else {
+            console.log(
+              colors.red("You do not have required permissions on the instance to perform the push operation.")
+            );
+          }
+        } else {
+          console.log(colors.red("Please authenticate first to perform the push operation."));
+        }
       } else {
-          console.log(colors.red('Please authenticate first to perform the push operation.'));
+        console.log(colors.red("Please pull an instance first to push an instance."));
+      }
+    } else {
+      console.log(colors.red("Please authenticate first to perform the push operation."));
+    }
+  },
+});
+
+yargs.command({
+  command: "publishcontent",
+  describe: "Publish a specific content ID or list of content IDs.",
+  builder: {
+    guid: {
+      describe: "Provide the target guid to update your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    locale: {
+      describe: "Provide the locale to update your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    contentItems: {
+      describe: "What content items to update",
+      demandOption: false,
+      type: "string",
+      default: "",
+    },
+  },
+  handler: async function (argv) {
+    const guid: string = argv.guid as string;
+    const locale: string = argv.locale as string;
+    const contentItems: number[] = (argv.contentItems as string).split(",").map(Number);
+
+    const code = new fileOperations();
+    auth = new Auth();
+    const codeFileStatus = code.codeFileExists();
+
+    if (codeFileStatus) {
+      const agilityFolder = code.cliFolderExists();
+      if (agilityFolder) {
+        const data = JSON.parse(code.readTempFile("code.json"));
+
+        const multibar = createMultibar({ name: "Publish" });
+        const bar = await multibar.create(contentItems.length, 0, { name: "Publishing" });
+
+        const form = new FormData();
+        form.append("cliCode", data.code);
+
+        const token = await auth.cliPoll(form, guid);
+
+        options = new mgmtApi.Options();
+        options.token = token.access_token;
+
+        const user = await auth.getUser(guid);
+        if (user) {
+          const permitted = await auth.checkUserRole(guid);
+          if (permitted) {
+            console.log("-----------------------------------------------");
+            console.log(colors.yellow("Publishing your content items..."));
+            console.log("-----------------------------------------------");
+            const apiClient = new mgmtApi.ApiClient(options);
+
+            for (const contentItem of contentItems) {
+              try {
+                await apiClient.contentMethods.publishContent(contentItem, guid, locale);
+                await bar.increment();
+              } catch (error) {
+                console.error(`Failed to publish content item ${contentItem}:`, error);
+              }
+            }
+
+            await bar.update(contentItems.length, { name: "Published!" });
+
+            await bar.stop();
+
+            setTimeout(() => {
+              console.log(colors.green("Content items have been published."));
+              exit(1);
+            }, 1000);
+          } else {
+            console.log(
+              colors.red("You do not have required permissions on the instance to perform the push operation.")
+            );
+            exit(1);
+          }
+        } else {
+          console.log(colors.red("Please authenticate first to perform the push operation."));
           exit(1);
+        }
+      } else {
+        console.log(colors.red("Please pull an instance first to push an instance."));
+        exit(1);
       }
-  }
+    } else {
+      console.log(colors.red("Please authenticate first to perform the push operation."));
+      exit(1);
+    }
+  },
 });
 
-
 yargs.command({
-  command: 'clone',
-  describe: 'Clone your Instance.',
+  command: "clone",
+  describe: "Clone your Instance.",
   builder: {
-      sourceGuid: {
-          describe: 'Provide the source guid to clone your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      targetGuid: {
-          describe: 'Provide the target guid to clone your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      locale: {
-          describe: 'Provide the locale to clone your instance.',
-          demandOption: true,
-          type: 'string'
-      },
-      channel: {
-          describe: 'Provide the channel to pull your instance.',
-          demandOption: true,
-          type: 'string'
-      }
+    sourceGuid: {
+      describe: "Provide the source guid to clone your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    targetGuid: {
+      describe: "Provide the target guid to clone your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    locale: {
+      describe: "Provide the locale to clone your instance.",
+      demandOption: true,
+      type: "string",
+    },
+    channel: {
+      describe: "Provide the channel to pull your instance.",
+      demandOption: true,
+      type: "string",
+    },
   },
-  handler: async function(argv) {
-     let sourceGuid: string = argv.sourceGuid as string;
-     let targetGuid: string = argv.targetGuid as string;
-     let locale: string = argv.locale as string;
-     let channel: string = argv.channel as string;
-     let code = new fileOperations();
-     auth = new Auth();
-     let codeFileStatus = code.codeFileExists();
-     if(codeFileStatus){
-      code.cleanup('agility-files');
-      let data = JSON.parse(code.readTempFile('code.json'));
+  handler: async function (argv) {
+    let sourceGuid: string = argv.sourceGuid as string;
+    let targetGuid: string = argv.targetGuid as string;
+    let locale: string = argv.locale as string;
+    let channel: string = argv.channel as string;
+    let code = new fileOperations();
+    auth = new Auth();
+    let codeFileStatus = code.codeFileExists();
+    if (codeFileStatus) {
+      code.cleanup("agility-files");
+      let data = JSON.parse(code.readTempFile("code.json"));
       const form = new FormData();
-      form.append('cliCode', data.code);
+      form.append("cliCode", data.code);
 
       let token = await auth.cliPoll(form, sourceGuid);
 
       let user = await auth.getUser(sourceGuid);
 
-      if(user){
+      if (user) {
+        let sourcePermitted = await auth.checkUserRole(sourceGuid);
+        let targetPermitted = await auth.checkUserRole(targetGuid);
 
-          let sourcePermitted = await auth.checkUserRole(sourceGuid);
-          let targetPermitted = await auth.checkUserRole(targetGuid);
+        if (sourcePermitted && targetPermitted) {
+          console.log(colors.yellow("Cloning your instance..."));
+          let cloneSync = new clone(sourceGuid, targetGuid, locale, channel);
 
-          if(sourcePermitted && targetPermitted){
-              console.log(colors.yellow('Cloning your instance...'));
-              let cloneSync = new clone(sourceGuid, targetGuid, locale, channel);
+          console.log(colors.yellow("Pulling your instance..."));
+          await cloneSync.pull();
 
-              console.log(colors.yellow('Pulling your instance...'));
-              await cloneSync.pull();
-
-              let agilityFolder = code.cliFolderExists();
-              if(agilityFolder){
-                  console.log(colors.yellow('Pushing your instance...'));
-                  await cloneSync.push();
-              }
-              else{
-                  console.log(colors.red('Please pull an instance first to push an instance.'));
-              }
+          let agilityFolder = code.cliFolderExists();
+          if (agilityFolder) {
+            console.log(colors.yellow("Pushing your instance..."));
+            await cloneSync.push();
+          } else {
+            console.log(colors.red("Please pull an instance first to push an instance."));
           }
-          else{
-              console.log(colors.red('You do not have the required permissions to perform the clone operation.'));
-          }
+        } else {
+          console.log(colors.red("You do not have the required permissions to perform the clone operation."));
+        }
+      } else {
+        console.log(colors.red("Please authenticate first to perform the clone operation."));
       }
-      else{
-          console.log(colors.red('Please authenticate first to perform the clone operation.'));
-      }
-      
-     }
-     else {
-      console.log(colors.red('Please authenticate first to perform the clone operation.'));
-     }
-  }
-})
-
+    } else {
+      console.log(colors.red("Please authenticate first to perform the clone operation."));
+    }
+  },
+});
 
 yargs.parse();
 
 // Prevent the script from exiting
 setInterval(() => {}, 1000);
-

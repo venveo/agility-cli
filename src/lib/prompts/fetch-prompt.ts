@@ -6,11 +6,11 @@ import { baseUrlPrompt, getBaseURLfromGUID } from "./base-url-prompt";
 import agilitySDK from "@agility/content-fetch";
 import process from "process";
 
-import { fileOperations } from "../fileOperations";
+import { fileOperations } from "../../fileOperations";
 import { exec } from "child_process";
 import { homePrompt } from "./home-prompt";
 import { instancesPrompt } from "./instance-prompt";
-import { AgilityInstance } from "../types/instance";
+import { AgilityInstance } from "../../types/instance";
 import ansiColors from "ansi-colors";
 
 export async function fetchCommandsPrompt(

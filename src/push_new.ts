@@ -1,17 +1,22 @@
 import * as mgmtApi  from '@agility/management-sdk';
 import { fileOperations } from './fileOperations';
 import * as fs from 'fs';
+// Use require instead of import for blessed and blessed-contrib
+const blessed = require('blessed');
+const contrib = require('blessed-contrib');
+// import * as blessed from 'blessed'; 
+// import * as contrib from 'blessed-contrib';
 const FormData = require('form-data');
 import * as cliProgress from 'cli-progress';
 import ansiColors from 'ansi-colors';
-import { homePrompt } from './prompts/home-prompt';
+import { homePrompt } from './lib/prompts/home-prompt';
 import { Auth } from './auth';
-import { ReferenceMapper } from './mappers/mapper';
+import { ReferenceMapper } from './lib/mapper';
 import { container } from 'container';
-import { mapContentItem } from './mappers/content-item-mapper';
-import { findContainerInTargetInstance } from './mappers/finders/container-finder';
-import { ContainerPusher } from './mappers/pushers/container-pusher';
-import { ContentPusher } from './mappers/pushers/content-item-pusher';
+import { mapContentItem } from './lib/mappers/content-item-mapper';
+import { findContainerInTargetInstance } from './lib/finders/container-finder';
+import { ContainerPusher } from './lib/pushers/container-pusher';
+import { ContentPusher } from './lib/pushers/content-item-pusher';
 // // Extend the PageItem type to include pageTemplateID
 // const wrapAnsi = require('wrap-ansi');
 declare module '@agility/management-sdk' {
@@ -31,7 +36,7 @@ export class pushNew{
     _token: string;
     processedModels: { [key: string]: number; };
     processedDefinitionIds: { [key: number]: number; };
-    processedContentIds : {[key: number]: number;}; //format Key -> Old ContentId, Value New ContentId.
+    processedContentIds : {[key: number]: number}; //format Key -> Old ContentId, Value New ContentId.
     skippedContentItems: {[key: number]: string}; //format Key -> ContentId, Value ReferenceName of the content.
     processedGalleries: {[key: number]: number};
     processedTemplates: {[key: string]: number}; //format Key -> pageTemplateName, Value pageTemplateID.
@@ -44,8 +49,9 @@ export class pushNew{
     private _referenceMapper: ReferenceMapper;
     private failedContainers: number = 0;
     private failedContent: number = 0;
+    private _useBlessedUI: boolean = false;
 
-    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean){
+    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean, useBlessedUI?: boolean){
         // Handle SSL certificate verification for local development
         if (process.env.NODE_ENV === 'development' || process.env.LOCAL) {
             process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -70,6 +76,7 @@ export class pushNew{
         this.processedContainers = {};
         this._apiClient = new mgmtApi.ApiClient(this._options);
         this._referenceMapper = new ReferenceMapper(this._guid, this._targetGuid);
+        this._useBlessedUI = useBlessedUI ?? false;
     }
 
     async initialize() {
@@ -78,200 +85,517 @@ export class pushNew{
     }
 
     async pushInstance(): Promise<void> {
+        
+        let screen: any | null = null;
+        let logContainer: any | null = null;
+        let progressContainerBox: any | null = null;
+        let stepProgressBars: any[] = [];
+        const pushSteps = [ 'Galleries', 'Assets', 'Models', 'Containers', 'Content', 'Templates', 'Pages' ];
+        const totalSteps = pushSteps.length;
+        let stepStatuses = new Array(totalSteps).fill(0);
+        let originalConsoleLog = console.log;
+        let originalConsoleError = console.error;
+
+        const restoreConsole = () => {
+            console.log = originalConsoleLog;
+            console.error = originalConsoleError;
+        };
+
+        const updateProgress = (currentStepIndex: number, status: 'success' | 'error', percentage?: number) => {
+            if (!this._useBlessedUI) return; // Do nothing if UI not enabled
+            if (currentStepIndex >= 0 && currentStepIndex < totalSteps) {
+                const targetBar = stepProgressBars[currentStepIndex];
+                if (targetBar) {
+                    // Use provided percentage or default to 100 for completion
+                    const fillPercentage = percentage !== undefined ? percentage : 100;
+                    targetBar.setProgress(fillPercentage);
+
+                    // Determine color - turn red on first error and stay red
+                    let barColor = 'blue'; // Default/in-progress
+                    
+                    // --- Refined Logic --- 
+                    // Mark step as errored immediately if status is error
+                    if (status === 'error' && stepStatuses[currentStepIndex] !== 2) {
+                         stepStatuses[currentStepIndex] = 2; // Mark step as errored PERMANENTLY
+                    }
+                    
+                    // Set color based on the PERMANENT status
+                    if (stepStatuses[currentStepIndex] === 2) { // If step is marked errored
+                        barColor = 'red';
+                    } else if (fillPercentage === 100) { // Completed successfully?
+                        barColor = 'green';
+                        stepStatuses[currentStepIndex] = 1; // Mark step as success
+                    } else {
+                        // Still in progress and no error encountered yet
+                        barColor = 'blue'; 
+                    }
+                    
+                    // Apply the style
+                    targetBar.style.bar.bg = barColor;
+
+                    // Optionally update label with status on completion
+                    if(fillPercentage === 100) {
+                        targetBar.setLabel(` ${pushSteps[currentStepIndex]} (${status}) `);
+                    }
+                }
+            }
+            screen?.render(); 
+        };
+
+        if (this._useBlessedUI) {
+            // Initialize Blessed screen
+            screen = blessed.screen({
+                smartCSR: true,
+                title: 'Agility CLI - Push Operation'
+            });
+
+            // Initialize Grid layout
+            const grid = new contrib.grid({rows: 12, cols: 12, screen: screen});
+
+            // Left Column Container (Box) - 1/3 width
+            progressContainerBox = grid.set(0, 0, 12, 4, blessed.box, {
+                label: ' Progress ',
+                border: { type: 'line' },
+                style: { 
+                    border: { fg: 'cyan' },
+                 }
+            });
+
+            // Create individual progress bars
+            pushSteps.forEach((stepName, index) => {
+                 const bar = blessed.progressbar({
+                    parent: progressContainerBox,
+                    border: 'line',
+                    pch: ' ', // Use space character for filled portion
+                    style: {
+                        fg: 'white',
+                        bg: 'black',
+                        bar: { bg: 'blue', fg: 'white' }, // Default to blue (pending)
+                        border: { fg: '#f0f0f0' }
+                    },
+                    width: '90%',
+                    height: 3,
+                    top: 1 + (index * 3), // Position vertically
+                    left: 'center',
+                    filled: 0,
+                    label: ` ${stepName} ` // Add spaces for padding
+                 });
+                 stepProgressBars.push(bar);
+            });
+
+            // Logs (Right Column) - 2/3 width
+            logContainer = grid.set(0, 4, 12, 8, blessed.log, {
+                label: ' Logs ',
+                border: { type: 'line' },
+                style: { border: { fg: 'green' } },
+                padding: { left: 1, right: 1 },
+                scrollable: true,
+                alwaysScroll: true,
+                scrollbar: {
+                    ch: ' ',
+                    inverse: true
+                },
+                keys: true, // Enable scrolling with keys
+                vi: true    // Enable vi keys for scrolling
+            });
+
+            // Redirect console logging to the blessed log widget
+            console.log = (...args: any[]) => {
+                if (logContainer) {
+                    logContainer.log(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' '));
+                    screen?.render(); // Ensure screen updates after log
+                }
+            };
+            console.error = (...args: any[]) => {
+                if (logContainer) {
+                    const errorMsg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ');
+                    logContainer.log(ansiColors.red(`ERROR: ${errorMsg}`));
+                    screen?.render(); // Ensure screen updates after error
+                }
+            };
+
+            // Quit on Escape, q, or Control-C.
+            screen.key(['escape', 'q', 'C-c'], function(ch, key) {
+                restoreConsole();
+                screen?.destroy(); // Destroy screen before exiting
+                return process.exit(0);
+            });
+
+            // Render the screen.
+            screen.render();
+
+            // Explicitly focus the log container for scrolling
+            logContainer.focus();
+
+        } else {
+            // If not using blessed UI, ensure original console is used
+            restoreConsole(); 
+        }
+
+        // Initial update to show 0%
+        if (this._useBlessedUI) {
+            updateProgress(-1, 'success'); // Call initially to set 0%
+        }
+
+        let currentStep = -1;
         try {
-            // Push galleries and assets first
-            await this.pushGalleries(this._targetGuid);
-            await this.pushAssets(this._targetGuid);
-
-            // Get models
-            const models = await this.getModels();
-            if (!models || models.length === 0) {
-                console.log('No models found to push');
-                return;
+            // --- Galleries --- 
+            currentStep = 0;
+            let galleryStatus: 'success' | 'error' = 'success';
+            const galleryStepIndex = pushSteps.indexOf('Galleries');
+            try {
+                if (!this._useBlessedUI) console.log('Pushing galleries...'); // Log normally if no UI
+                else logContainer?.log('Pushing galleries...');
+                // Define the progress callback for galleries
+                const galleryProgressCallback = (processed: number, total: number, status?: 'success' | 'error') => {
+                    const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                    // Pass status through
+                    updateProgress(galleryStepIndex, status || 'success', percentage); 
+                };
+                await this.pushGalleries(this._targetGuid, galleryProgressCallback);
+                if (!this._useBlessedUI) console.log('Galleries pushed.');
+                else logContainer?.log('Galleries pushed.');
+            } catch (e) {
+                galleryStatus = 'error';
+                if (!this._useBlessedUI) console.error(ansiColors.red(`ERROR pushing galleries: ${e.message}`));
+                else logContainer?.log(ansiColors.red(`ERROR pushing galleries: ${e.message}`));
             }
+            // Final update for Galleries step (sets 100% and color)
+            updateProgress(galleryStepIndex, galleryStatus);
 
-            let totalModels = models.length;
-            let successfulModels = 0;
-            let failedModels = 0;
-            let modelExists = false;
-            // Separate normal and linked models
-            const linkedModels = models.filter(model => this.isLinkedModel(model));
-            const normalModels = models.filter(model => !this.isLinkedModel(model));
+            // --- Assets --- 
+            currentStep = 1;
+            let assetStatus: 'success' | 'error' = 'success';
+            try {
+                if (!this._useBlessedUI) console.log('Pushing assets...'); // Log normally if no UI
+                else logContainer?.log('Pushing assets...');
+                // Define the progress callback for assets
+                const assetProgressCallback = (processed: number, total: number, status?: 'success' | 'error') => {
+                    const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                    // Pass status through
+                    updateProgress(currentStep, status || 'success', percentage);
+                };
+                await this.pushAssets(this._targetGuid, assetProgressCallback);
+                if (!this._useBlessedUI) console.log('Assets pushed.');
+                else logContainer?.log('Assets pushed.');
+            } catch (e) {
+                assetStatus = 'error';
+                if (!this._useBlessedUI) console.error(ansiColors.red(`ERROR pushing assets: ${e.message}`));
+                else logContainer?.log(ansiColors.red(`ERROR pushing assets: ${e.message}`));
+            }
+            updateProgress(currentStep, assetStatus);
 
-            // Process normal models first
-            // console.log(ansiColors.yellow(`Processing ${normalModels.length} normal models...`));
-            for (const model of normalModels) {
-                let apiClient = new mgmtApi.ApiClient(this._options);
-                let existingModel: mgmtApi.Model | null = null;
-                try {
-                    // First try to get the model from the target instance
-                    existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
-                    if (existingModel) {
-                        // Model exists in target, add it to reference mapper
-                        this._referenceMapper.addRecord('model', model, existingModel);
-                        console.log(`✓ Normal model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green(this._targetGuid)}: id:${existingModel.id}`);
-                        modelExists = true;
-                        successfulModels++;
-                        continue;
-                    }
-                } catch (error) {
-                    if (error.response && error.response.status !== 404) {
-                        console.error(`[Model] ✗ Error checking for existing model ${model.referenceName}: ${error.message}`);
-                        failedModels++;
-                        continue;
-                    }
-                    // 404 means model doesn't exist, which is fine - we'll create it
-                }
+            // --- Models --- 
+            currentStep = 2;
+            let modelStatus: 'success' | 'error' = 'success';
+            const modelStepIndex = pushSteps.indexOf('Models');
+            try {
+                if (!this._useBlessedUI) console.log('Processing models...'); // Log normally if no UI
+                else logContainer?.log('Processing models...');
+                const models = await this.getModels();
+                if (!models || models.length === 0) {
+                    console.log('No models found to push');
+                } else {
+                    let totalModels = models.length;
+                    let successfulModels = 0;
+                    let failedModels = 0;
+                    let modelExists = false;
+                    const linkedModels = models.filter(model => this.isLinkedModel(model));
+                    const normalModels = models.filter(model => !this.isLinkedModel(model));
 
-                // Model doesn't exist in target, try to create it
-                try {
+                    // Process normal models first
+                    let modelsProcessedCount = 0;
 
-                    const modelPayload = {
-                    ...model,
-                    id: existingModel ? existingModel.id : 0
-                    }
-                
-                    let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
-                    this._referenceMapper.addRecord('model', model, savedModel);
-                    console.log(`✓ Normal Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.id.toString()} ${ansiColors.green(this._targetGuid)}: ${savedModel.id.toString()}`);
-                    successfulModels++;
-                } catch (error) {
-                    console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
-                    failedModels++;
-                    if (error.response && error.response.status === 409) {
-                        // Conflict - model might have been created by another process
+                    for (const model of normalModels) {
+                        let apiClient = new mgmtApi.ApiClient(this._options);
+                        let existingModel: mgmtApi.Model | null = null;
                         try {
-                            let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                            // First try to get the model from the target instance
+                            existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
                             if (existingModel) {
+                                // Model exists in target, add it to reference mapper
                                 this._referenceMapper.addRecord('model', model, existingModel);
-                                console.log(`✓ Normal Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green(this._targetGuid)}: ${existingModel.referenceName}`);
+                                console.log(`✓ Normal model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green(this._targetGuid)}: id:${existingModel.id}`);
+                                modelExists = true;
                                 successfulModels++;
+                                continue;
                             }
-                        } catch (getError) {
-                            console.error(`[Model] Failed to get existing model: ${getError.message}`);
+                        } catch (error) {
+                            if (error.response && error.response.status !== 404) {
+                                console.error(`[Model] ✗ Error checking for existing model ${model.referenceName}: ${error.message}`);
+                                failedModels++;
+                                continue;
+                            }
+                            // 404 means model doesn't exist, which is fine - we'll create it
                         }
-                    }
-                }
-            }
 
-            // Then process linked models
-            // console.log(ansiColors.yellow(`Processing ${linkedModels.length} linked models...`));
-            for (const model of linkedModels) {
-                let apiClient = new mgmtApi.ApiClient(this._options);
-                let existingModel: mgmtApi.Model | null = null;
-                try {
-                    // First try to get the model from the target instance
-                    existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
-                    if (existingModel) {
-                        // Model exists in target, add it to reference mapper
-                        this._referenceMapper.addRecord('model', model, existingModel);
-                        console.log(`✓ Nested model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green('Target')}:  ${existingModel.id}`);
-                        successfulModels++;
-                        continue;
-                    }
-                } catch (error) {
-                    if (error.response && error.response.status !== 404) {
-                        console.error(`[Model] ✗ Error checking for existing model ${model.referenceName}: ${error.message}`);
-                        failedModels++;
-                        continue;
-                    }
-                    // 404 means model doesn't exist, which is fine - we'll create it
-                }
-
-                // Process linked content fields before creating the model
-                for (const field of model.fields) {
-                    if (field.type === 'Content' && field.settings['ContentDefinition']) {
-                        const linkedModelRef = field.settings['ContentDefinition'];
-                        // Check if the referenced model exists in the target
-                        const referencedModel = await apiClient.modelMethods.getModelByReferenceName(linkedModelRef, this._targetGuid);
-                        if (!referencedModel) {
-                            console.error(`[Model] ✗ Referenced model ${linkedModelRef} not found for linked model ${model.referenceName}`);
+                        // Model doesn't exist in target, try to create it
+                        try {
+                            const modelPayload = {
+                            ...model,
+                            id: existingModel ? existingModel.id : 0
+                            }
+                        
+                            let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
+                            this._referenceMapper.addRecord('model', model, savedModel);
+                            console.log(`✓ Normal Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.id.toString()} ${ansiColors.green(this._targetGuid)}: ${savedModel.id.toString()}`);
+                            successfulModels++;
+                        } catch (error) {
+                            console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
                             failedModels++;
-                            continue;
-                        }
-                    }
-                }
-
-                // Model doesn't exist in target, try to create it
-                try {
-                    const modelPayload = {
-                    ...model,
-                    id: existingModel ? existingModel.id : 0
-                     }
-                    let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
-                    this._referenceMapper.addRecord('model', model, savedModel);
-                    console.log(`✓ Nested Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} (ID: ${model.id.toString()}), ${ansiColors.green('Target')}: ${savedModel.referenceName} (ID: ${savedModel.id.toString()})`);
-                    successfulModels++;
-                } catch (error) {
-                    console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
-                    failedModels++;
-                    if (error.response && error.response.status === 409) {
-                        // Conflict - model might have been created by another process
-                        try {
-                            let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
-                            if (existingModel) {
-                                this._referenceMapper.addRecord('model', model, existingModel);
-                                console.log(`✓ Nested Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green('Target')}: ${existingModel.referenceName}`);
-                                successfulModels++;
+                            if (error.response && error.response.status === 409) {
+                                // Conflict - model might have been created by another process
+                                try {
+                                    let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                                    if (existingModel) {
+                                        this._referenceMapper.addRecord('model', model, existingModel);
+                                        console.log(`✓ Normal Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green(this._targetGuid)}: ${existingModel.referenceName}`);
+                                        successfulModels++;
+                                    }
+                                } catch (getError) {
+                                    console.error(`[Model] Failed to get existing model: ${getError.message}`);
+                                }
                             }
-                        } catch (getError) {
-                            console.error(`[Model] Failed to get existing model: ${getError.message}`);
                         }
+                        // Update progress for each model processed
+                        const percentage = (successfulModels / totalModels) * 100;
+                        updateProgress(currentStep, 'success', percentage);
                     }
+
+                    // Then process linked models
+                    for (const model of linkedModels) {
+                        let apiClient = new mgmtApi.ApiClient(this._options);
+                        let existingModel: mgmtApi.Model | null = null;
+                        try {
+                            // First try to get the model from the target instance
+                            existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                            if (existingModel) {
+                                // Model exists in target, add it to reference mapper
+                                this._referenceMapper.addRecord('model', model, existingModel);
+                                console.log(`✓ Nested model ${ansiColors.underline(model.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${model.id} ${ansiColors.green('Target')}:  ${existingModel.id}`);
+                                successfulModels++;
+                                continue;
+                            }
+                        } catch (error) {
+                            if (error.response && error.response.status !== 404) {
+                                console.error(`[Model] ✗ Error checking for existing model ${model.referenceName}: ${error.message}`);
+                                failedModels++;
+                                continue;
+                            }
+                            // 404 means model doesn't exist, which is fine - we'll create it
+                        }
+
+                        // Process linked content fields before creating the model
+                        for (const field of model.fields) {
+                            if (field.type === 'Content' && field.settings['ContentDefinition']) {
+                                const linkedModelRef = field.settings['ContentDefinition'];
+                                // Check if the referenced model exists in the target
+                                const referencedModel = await apiClient.modelMethods.getModelByReferenceName(linkedModelRef, this._targetGuid);
+                                if (!referencedModel) {
+                                    console.error(`[Model] ✗ Referenced model ${linkedModelRef} not found for linked model ${model.referenceName}`);
+                                    failedModels++;
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Model doesn't exist in target, try to create it
+                        try {
+                            const modelPayload = {
+                            ...model,
+                            id: existingModel ? existingModel.id : 0
+                             }
+                            let savedModel = await apiClient.modelMethods.saveModel(modelPayload, this._targetGuid);
+                            this._referenceMapper.addRecord('model', model, savedModel);
+                            console.log(`✓ Nested Model created - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName} (ID: ${model.id.toString()}), ${ansiColors.green('Target')}: ${savedModel.referenceName} (ID: ${savedModel.id.toString()})`);
+                            successfulModels++;
+                        } catch (error) {
+                            console.error(`[Model] ✗ Error creating new model ${model.referenceName}: ${error.message}`);
+                            failedModels++;
+                            if (error.response && error.response.status === 409) {
+                                // Conflict - model might have been created by another process
+                                try {
+                                    let existingModel = await apiClient.modelMethods.getModelByReferenceName(model.referenceName, this._targetGuid);
+                                    if (existingModel) {
+                                        this._referenceMapper.addRecord('model', model, existingModel);
+                                        console.log(`✓ Nested Model - ${model.referenceName} - ${ansiColors.green('Source')}: ${model.referenceName}, ${ansiColors.green('Target')}: ${existingModel.referenceName}`);
+                                        successfulModels++;
+                                    }
+                                } catch (getError) {
+                                    console.error(`[Model] Failed to get existing model: ${getError.message}`);
+                                }
+                            }
+                        }
+                        // Update progress for each linked model processed
+                        const percentage = (successfulModels / totalModels) * 100;
+                        updateProgress(currentStep, 'success', percentage);
+                    }
+
+                    // Final status update for Models step (sets color)
+                    modelStatus = failedModels > 0 ? 'error' : 'success';
+                    updateProgress(modelStepIndex, modelStatus); // Call without percentage to set final state
+                    console.log(ansiColors.yellow(`Processed ${successfulModels}/${totalModels} models (${failedModels} failed)`));
+                    if (!this._useBlessedUI) console.log('Models processed.');
+                    else logContainer?.log('Models processed.');
                 }
+            } catch (e) {
+                modelStatus = 'error';
+                if (!this._useBlessedUI) console.error(ansiColors.red(`ERROR processing models: ${e.message}`));
+                else logContainer?.log(ansiColors.red(`ERROR processing models: ${e.message}`));
             }
+            updateProgress(currentStep, modelStatus);
 
-            console.log(ansiColors.yellow(`Processed ${successfulModels}/${totalModels} models (${failedModels} failed)`));
-
-            // Get containers
-            const containers = this.getBaseContainers();
-            if (!containers || containers.length === 0) {
-                console.log('No containers found to push');
-                return;
+            // --- Containers --- 
+            currentStep = 3;
+            let containerStatus: 'success' | 'error' = 'success';
+            try{
+                if (!this._useBlessedUI) console.log('Processing containers...'); // Log normally if no UI
+                else logContainer?.log('Processing containers...');
+                const containers = this.getBaseContainers();
+                if (!containers || containers.length === 0) {
+                    console.log('No containers found to push');
+                } else {
+                    const containerPusher = new ContainerPusher(
+                        this._apiClient,
+                        this._referenceMapper,
+                        this._targetGuid,
+                    );
+                    // We need pushContainers to return success/fail status or check logs/mapper
+                    const containerProgressCallback = (processed: number, total: number, status?: 'success' | 'error') => {
+                        const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                        updateProgress(currentStep, status || 'success', percentage);
+                    };
+                    // Pass the callback to pushContainers
+                    await containerPusher.pushContainers(containers, containerProgressCallback);
+                    // TODO: Determine actual success/failure from containerPusher if possible
+                }
+                if (!this._useBlessedUI) console.log('Containers pushed.');
+                else logContainer?.log('Containers pushed.');
+            } catch(e){
+                containerStatus = 'error';
+                if (!this._useBlessedUI) console.error(ansiColors.red(`ERROR processing containers: ${e.message}`));
+                else logContainer?.log(ansiColors.red(`ERROR processing containers: ${e.message}`));
             }
+            updateProgress(currentStep, containerStatus);
 
-            // Push containers using the new ContainerPusher
-            const containerPusher = new ContainerPusher(
-                this._apiClient,
-                this._referenceMapper,
-                this._targetGuid,
-            );
-            await containerPusher.pushContainers(containers);
-
-            // Get content items
-            const allContentItems = await this.getBaseContentItems();
-            if (!allContentItems || allContentItems.length === 0) {
-                console.log('No content items found to push');
-                return;
+            // --- Content --- 
+            currentStep = 4;
+            let contentStatus: 'success' | 'error' = 'success';
+            try{
+                if (!this._useBlessedUI) console.log('Processing content items...'); // Log normally if no UI
+                else logContainer?.log('Processing content items...');
+                const allContentItems = await this.getBaseContentItems();
+                if (!allContentItems || allContentItems.length === 0) {
+                    console.log('No content items found to push');
+                } else {
+                    const contentPusher = new ContentPusher(
+                        this._apiClient,
+                        this._referenceMapper,
+                        this._targetGuid,
+                        this._locale
+                    );
+                    const contentProgressCallback = (processed: number, total: number, status?: 'success' | 'error') => {
+                        const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                        updateProgress(currentStep, status || 'success', percentage); 
+                    };
+                    const contentResult = await contentPusher.pushContentItems(allContentItems, contentProgressCallback);
+                    const totalContentItems = allContentItems.length;
+                    console.log(ansiColors.yellow(`Processed ${contentResult.successfulItems}/${totalContentItems} content items (${contentResult.failedItems} failed)`));
+                    if(contentResult.failedItems > 0) contentStatus = 'error';
+                }
+                 if (!this._useBlessedUI) console.log('Content items pushed.');
+                else logContainer?.log('Content items pushed.');
+            } catch(e){
+                contentStatus = 'error';
+                if (!this._useBlessedUI) console.error(ansiColors.red(`ERROR processing content: ${e.message}`));
+                else logContainer?.log(ansiColors.red(`ERROR processing content: ${e.message}`));
             }
+            updateProgress(currentStep, contentStatus);
 
-            // Restore original content pusher logic
-           const contentPusher = new ContentPusher(
-            this._apiClient,
-            this._referenceMapper,
-            this._targetGuid,
-            this._locale
-           );
-           
-           const contentResult = await contentPusher.pushContentItems(allContentItems);
-           const totalContentItems = allContentItems.length;
-           console.log(ansiColors.yellow(`Processed ${contentResult.successfulItems}/${totalContentItems} content items (${contentResult.failedItems} failed)`));
+            // --- Templates --- 
+            currentStep = 5;
+            let templateStatus: 'success' | 'error' = 'success';
+            try {
+                if (!this._useBlessedUI) console.log('Processing templates...'); // Log normally if no UI
+                else logContainer?.log('Processing templates...');
+                const templates = await this.getBaseTemplates();
+                if(!templates || templates.length === 0){
+                    console.log('No templates found to push');
+                } else {
+                     const templateResult = await this.pushTemplates(templates, this._targetGuid, this._locale);
+                     if(templateResult.failedCount > 0) templateStatus = 'error';
+                }
+                if (!this._useBlessedUI) console.log('Templates processed.');
+                else logContainer?.log('Templates processed.');
+            } catch(e) {
+                templateStatus = 'error';
+                if (!this._useBlessedUI) console.error(ansiColors.red(`ERROR processing templates: ${e.message}`));
+                else logContainer?.log(ansiColors.red(`ERROR processing templates: ${e.message}`));
+            }
+             updateProgress(currentStep, templateStatus);
 
-            
-            // Push templates
-            const templates = await this.getBaseTemplates();
-            const templateResult = await this.pushTemplates(templates, this._targetGuid, this._locale);
-            const totalTemplates = templates?.length || 0;
-            const successfulTemplates = templateResult.createdTemplates.length;
-            console.log(ansiColors.yellow(`Processed ${successfulTemplates}/${totalTemplates} templates (${templateResult.failedCount} failed)`));
+            // --- Pages --- 
+            currentStep = 6;
+            let pageStatus: 'success' | 'error' = 'success';
+            const pageStepIndex = pushSteps.indexOf('Pages');
+            try {
+                if (!this._useBlessedUI) console.log('Processing pages...'); // Log normally if no UI
+                else logContainer?.log('Processing pages...');
+                const pages = await this.getBasePages(this._locale);
+                if(!pages || pages.length === 0){
+                     console.log('No pages found to push');
+                } else {
+                    // Define the progress callback for pages
+                    const pageProgressCallback = (processed: number, total: number, status?: 'success' | 'error') => {
+                        const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
+                        updateProgress(pageStepIndex, status || 'success', percentage); 
+                    };
+                    // Pass callback to pushPages
+                    await this.pushPages(this._targetGuid, this._locale, pages, pageProgressCallback);
+                    // TODO: Check logs or modify pushPages to determine actual success/failure.
+                    // For now, assume success unless error is thrown.
+                }
+                if (!this._useBlessedUI) console.log('Pages processed.');
+                else logContainer?.log('Pages processed.');
+             } catch(e){
+                pageStatus = 'error';
+                if (!this._useBlessedUI) console.error(ansiColors.red(`ERROR processing pages: ${e.message}`));
+                else logContainer?.log(ansiColors.red(`ERROR processing pages: ${e.message}`));
+            }
+            // Final update for Pages step (sets 100% and color)
+            // We need a way to determine status (e.g., from logs or modifying pushPages)
+            // For now, assume success if no error was caught directly here.
+            updateProgress(pageStepIndex, pageStatus);
 
-            // then push the pages
-            const pages = await this.getBasePages(this._locale);
-            await this.pushPages(this._targetGuid, this._locale, pages);
+            // Final Status Check
+            const overallStatus = stepStatuses.includes(2) ? 'failed' : 'completed successfully';
+            const finalMessage = `\nPush process ${overallStatus}!`;
+            if (!this._useBlessedUI) {
+                 console.log(finalMessage);
+            } else {
+                logContainer?.log(finalMessage);
+            }
 
         } catch (error) {
-            console.error('Error in pushInstance:', error);
-            throw error;
+             if (!this._useBlessedUI) {
+                 console.error(`Unhandled error during push: ${error.message}`);
+                 console.error(error.stack);
+                 console.log(ansiColors.red('\nPush process failed!'));
+             } else {
+                logContainer?.log(ansiColors.red(`Unhandled error during push: ${error.message}`));
+                logContainer?.log(ansiColors.red(error.stack));
+                logContainer?.log(ansiColors.red('\nPush process failed!')); // Log final failure status
+             }
+        } finally {
+             if (this._useBlessedUI) {
+                // Keep screen alive briefly to show final status/errors
+                logContainer?.log("\nPress ESC, q, or Ctrl+C to exit.");
+                screen?.render();
+                // Screen destroyed by keybind
+             } else {
+                 // Ensure console is restored if somehow redirection happened without UI flag
+                 restoreConsole();
+             }
         }
     }
 
@@ -318,7 +642,6 @@ export class pushNew{
 
     private async getModels(): Promise<mgmtApi.Model[]> {
         const models = this.getBaseModels() || [];
-        // console.log(`Found ${models.length} models to process`);
         return models;
     }
 
@@ -575,10 +898,6 @@ export class pushNew{
                         }
                     }
 
-                    // Add template to reference mapper using both name and ID as keys
-                    // console.log(`Adding template to reference mapper - Name: ${template.pageTemplateName}, ID: ${template.pageTemplateID}`);
-                    // console.log('template', template);
-                    // console.log('existingTemplate', existingTemplate);
                    
                     this._referenceMapper.addRecord('template', template, existingTemplate);
                     console.log(`✓ Template ${ansiColors.underline(template.pageTemplateName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${originalID} ${ansiColors.green('Target')}: pageTemplateID:${existingTemplate.pageTemplateID}`);
@@ -602,8 +921,6 @@ export class pushNew{
                 createdTemplates.push(createdTemplate);
                 this.processedTemplates[createdTemplate.pageTemplateName] = createdTemplate.pageTemplateID;
                 // Add template to reference mapper
-                console.log(`Adding new template to reference mapper - Name: ${template.pageTemplateName}, ID: ${template.pageTemplateID}`);
-                this._referenceMapper.addRecord('template', template, createdTemplate);
                 console.log(`✓ Template created - ${ansiColors.green('Source')}: ${template.pageTemplateName} (ID: ${originalID}), ${ansiColors.green('Target')}: ${createdTemplate.pageTemplateName} (ID: ${createdTemplate.pageTemplateID})`);
             } catch{
                 console.log(`✗ Failed to create template: ${template.pageTemplateName}`);
@@ -615,21 +932,29 @@ export class pushNew{
        return { createdTemplates, failedCount }; // Return object with counts
     }
 
-    async pushPages(guid: string, locale: string, pages: mgmtApi.PageItem[]) {
+    async pushPages(guid: string, locale: string, pages: mgmtApi.PageItem[], onProgress?: (processed: number, total: number, status?: 'success' | 'error') => void) {
         let totalPages = pages.length;
-        let processedPages = 0;
+        let processedPagesCount = 0; // Counter for callback
+        let successfulPages = 0;
         let failedPages = 0;
 
 
         // First process all parent pages (pages without parentPageID)
         for (let page of pages) {
             if (page.parentPageID === -1) {
+                let itemStatus: 'success' | 'error' = 'success'; // Track status for this item
                 try {
                     await this.processPage(page, guid, locale, false);
-                    processedPages++;
+                    successfulPages++;
                 } catch (error) {
                     console.log(`✗ Failed to process parent page: ${page.name}`, error);
                     failedPages++;
+                    itemStatus = 'error'; // Set status to error on catch
+                }
+                // Increment counter and call progress with itemStatus
+                processedPagesCount++;
+                if (onProgress) {
+                    onProgress(processedPagesCount, totalPages, itemStatus);
                 }
             }
         }
@@ -637,33 +962,42 @@ export class pushNew{
         // Then process all child pages (pages with parentPageID)
         for (let page of pages) {
             if (page.parentPageID !== -1) {
+                let itemStatus: 'success' | 'error' = 'success'; // Track status for this item
+                let parentProcessed = false;
                 // Get the parent page reference
                 let parentRef = this._referenceMapper.getMappingByKey<mgmtApi.PageItem>('page', 'pageID', page.parentPageID);
                 if (!parentRef) {
                     console.log(`✗ Parent page not found for child page: ${page.name} (Parent ID: ${page.parentPageID})`);
                     failedPages++;
-                    continue;
+                    itemStatus = 'error'; // Error if parent not found
+                } else {
+                    const { source, target:targetParent } = parentRef;
+                    if (!targetParent) {
+                        console.log(`✗ Parent page not processed for child page: ${page.name} (Parent ID: ${page.parentPageID})`);
+                        failedPages++;
+                         itemStatus = 'error'; // Error if target parent not processed
+                    } else {
+                        try {
+                            page.parentPageID = targetParent.pageID;
+                            await this.processPage(page, guid, locale, true);
+                            successfulPages++;
+                            parentProcessed = true;
+                        } catch (error) {
+                            console.log(`✗ Failed to process child page: ${page.name}`, error);
+                            failedPages++;
+                            itemStatus = 'error'; // Set status to error on catch
+                        }
+                    }
                 }
-
-                const { source, target:targetParent } = parentRef;
-                if (!targetParent) {
-                    console.log(`✗ Parent page not processed for child page: ${page.name} (Parent ID: ${page.parentPageID})`);
-                    failedPages++;
-                    continue;
-                }
-
-                try {
-                    page.parentPageID = targetParent.pageID;
-                    await this.processPage(page, guid, locale, true);
-                    processedPages++;
-                } catch (error) {
-                    console.log(`✗ Failed to process child page: ${page.name}`, error);
-                    failedPages++;
+                // Increment counter and call progress with itemStatus
+                processedPagesCount++;
+                if (onProgress) {
+                    onProgress(processedPagesCount, totalPages, itemStatus);
                 }
             }
         }
 
-        console.log(ansiColors.yellow(`Processed ${processedPages}/${totalPages} pages (${failedPages} failed)`));
+        console.log(ansiColors.yellow(`Processed ${successfulPages}/${totalPages} pages (${failedPages} failed)`));
     }
 
     private async processPage(page: mgmtApi.PageItem, guid: string, locale: string, isChildPage: boolean) {
@@ -675,7 +1009,7 @@ export class pushNew{
             // Get the sitemap first
             const sitemap = await apiClient.pageMethods.getSitemap(guid, locale);
 
-            // console.log('sitemap', sitemap);
+            
             let correctPageID = -1;
             let channelID = -1;
 
@@ -684,11 +1018,10 @@ export class pushNew{
                 const websiteChannel = sitemap.find(channel => channel.digitalChannelTypeName === 'Website');
                 if (websiteChannel) {
                     channelID = websiteChannel.digitalChannelID;
-                    // console.log('channelID', channelID);
                     const pageInSitemap = websiteChannel.pages.find(p => p.pageName === page.name);
                     if (pageInSitemap) {
                         correctPageID = pageInSitemap.pageID;
-                        // console.log(`✓ Found page in sitemap - ID: ${correctPageID}, Channel ID: ${channelID}`);
+                        
                     }
                 }
             }
@@ -707,34 +1040,36 @@ export class pushNew{
             }
 
             page.pageTemplateID = targetTemplate.pageTemplateID;
-            // console.log(`✓ Template found and mapped - ID: ${page.pageTemplateID}`);
+            
 
             // Get the page zones
-            let mappedZones = page.zones;
+            // let mappedZones = page.zones;
 
-            // let payload = {
-            //     ...page,
-            // }
+               // --- START: Map Content IDs in Zones ---
+               let mappedZones = page.zones;
 
-            // Process each zone *and* map content IDs directly on the page object
-                for (const [zoneName, zoneContent] of Object.entries(mappedZones)) {
-                    // Process each module in the zone
-                    for (const module of zoneContent) {
-                        if ('contentId' in module.item) {
-                            const contentRef = this._referenceMapper.getContentMappingById<mgmtApi.ContentItem>(module.item.contentId);
-                            if (contentRef?.target) {
-                                module.item = {
-                                     contentId: contentRef.target.contentID,
-                                    //  referenceName: contentRef.target.properties.referenceName
-                                };
-                            } else {
-                                console.log(` ✗ Content ${module.item.contentId} not found in reference mapper for page ${page.name}`); // Don't break here, log all missing items
-                            }
-                        }
-                    }
-                }
-
-            
+               // let payload = {
+               //     ...page,
+               // }
+   
+               // Process each zone *and* map content IDs directly on the page object
+                   for (const [zoneName, zoneContent] of Object.entries(mappedZones)) {
+                       // Process each module in the zone
+                       for (const module of zoneContent) {
+                           if ('contentId' in module.item) {
+                               const contentRef = this._referenceMapper.getContentMappingById<mgmtApi.ContentItem>(module.item.contentId);
+                               if (contentRef?.target) {
+                                   module.item = {
+                                        contentId: contentRef.target.contentID,
+                                       //  referenceName: contentRef.target.properties.referenceName
+                                   };
+                               } else {
+                                   console.log(` ✗ Content ${module.item.contentId} not found in reference mapper for page ${page.name}`); // Don't break here, log all missing items
+                               }
+                           }
+                       }
+                   }
+              
             // Check if page already exists (using previously determined correctPageID)
             let existingPage;
             try {
@@ -756,18 +1091,13 @@ export class pushNew{
                 pageTemplateID: targetTemplate.pageTemplateID,
                 channelID: existingPage ? existingPage.channelID : -1,
                 zones: mappedZones
-                // zones: existingPage ? existingPage.zones : page.zones
             }
 
 
             // this is the old code that works.
 
             const savePageResponse:any = await apiClient.pageMethods.savePage(payload, guid, locale, parentIDArg, placeBeforeIDArg);
-            // console.log('Save Page (5 args)->', savePageResponse);
             
-            // Save the page (6 args - pass modified page object directly)
-            // const savePageResponse2 = await apiClient.pageMethods.savePage(page, guid, locale, parentIDArg, placeBeforeIDArg);
-            // console.log('Save Page (6 args)->', savePageResponse2);
 
             // Process the response (using the 6-arg response for details)
             if (Array.isArray(savePageResponse) || savePageResponse.length > 0) { // Type guard: If it's not an array, it must be a Batch
@@ -798,7 +1128,7 @@ export class pushNew{
                 const wrapped = this.wrapLines(savePageResponse.errorData,  80);
                 console.log(ansiColors.red(`API Error: ${wrapped}`));
               
-                // console.log(errorData); 
+                
                 console.log('payload', JSON.stringify(payload, null, 2));
             }
         } catch (error) {
@@ -863,100 +1193,11 @@ export class pushNew{
         };
     }
 
-    // async pushNormalContentItems(contentItems: mgmtApi.ContentItem[], guid: string) {
-    //     let totalContent = contentItems.length;
-    //     let processedContent = 0;
-    //     let failedContent = 0;
-
-    //     for (const contentItem of contentItems) {
-    //         let apiClient = new mgmtApi.ApiClient(this._options);
-    //         try {
-    //             const referenceName = contentItem.properties.referenceName;
-                
-    //             // Get the processed container using the reference mapper
-    //             let refMap = this._referenceMapper.getMapping<mgmtApi.Container>('container', 'referenceName', referenceName);
-                
-    //             if (!refMap) {
-    //                 console.log(`✗ Container not found in reference mapper for: ${referenceName}`);
-    //                 failedContent++;
-    //                 continue;
-    //             }
-
-    //             const { target:targetContainer } = refMap;
-
-    //             // Update asset URLs in content fields
-    //             let processedContentItem = this.updateAssetUrls(contentItem);
-
-    //             // console.log('processedContentItem', processedContentItem);
-    //             // First try to get the content item from the target instance
-    //             let existingContentItem;
-
-    //             try {
-    //                 existingContentItem = await apiClient.contentMethods.getContentItem(contentItem.contentID, this._targetGuid, this._locale);
-    //                 // processedContentItem = existingContentItem;
-    //                 // processedContentItem.contentID = existingContentItem.contentID;
-    //             } catch (error) {
-    //                 // Content item doesn't exist, we'll create it
-    //             }
-
-    //             // Create or update content item
-    //             let contentPayload;
-    //             try {
-    //                 // Ensure we're using the processed content item with updated URLs
-    //                 contentPayload = {
-    //                     ...existingContentItem ? processedContentItem : processedContentItem,
-    //                     contentID: existingContentItem ? existingContentItem.contentID : -1,
-    //                     properties: {
-    //                         ...existingContentItem ? existingContentItem.properties : processedContentItem.properties,
-    //                         referenceName: existingContentItem ? existingContentItem.properties.referenceName : targetContainer.referenceName
-    //                     }
-    //                 };
-
-
-
-    //                 // console.log('contentPayload', contentPayload);
-
-
-    //                 const contentIdArray = await apiClient.contentMethods.saveContentItem(contentPayload, guid, this._locale);
-                    
-                    
-    //                 if (contentIdArray && contentIdArray[0] > 0) {
-
-    //                     const newContentItem = {
-    //                         ...contentPayload,
-    //                         contentID: contentIdArray[0]
-    //                     } as mgmtApi.ContentItem;
-    //                     // Update both base and specialized reference mappings
-    //                     this._referenceMapper.addRecord('content', contentItem, newContentItem);
-    //                     console.log(`✓ Normal Content Item ${existingContentItem ? 'Updated' : 'Created'} ${ansiColors.green('Source:')} ${contentItem.properties.referenceName} (ID: ${contentItem.contentID}) ${ansiColors.green('Target:')} ${newContentItem.properties.referenceName} (ID: ${contentIdArray[0]})`);
-    //                     processedContent++;
-    //                 } else {
-    //                     console.log(`✗ Failed to ${existingContentItem ? 'update' : 'create'} normal content item ${contentItem.properties.referenceName}`);
-    //                     failedContent++;
-    //                 }
-    //             } catch (error) {
-    //                 console.log(`✗ Error ${existingContentItem ? 'updating' : 'creating'} normal content item ${contentItem.properties.referenceName}:`, error);
-    //                 if (error.response) {
-    //                     console.log('API Response:', error.response.data);
-    //                 }
-    //                 failedContent++;
-    //             }
-    //         } catch (error) {
-    //             console.log(`✗ Error processing normal content item ${contentItem.properties.referenceName}:`, error);
-    //             if (error.response) {
-    //                 console.log('API Response:', error.response.data);
-    //             }
-    //             failedContent++;
-    //         }
-    //     }
-    //     console.log(ansiColors.yellow(`✓ Processed ${processedContent}/${totalContent} normal content items (${failedContent} failed)`));
-    // }
-
     private isLinkedModel(model: mgmtApi.Model): boolean {
         return model.fields.some(field => field.type === 'Content');
     }
 
-    private async pushGalleries(guid: string): Promise<void> {
+    private async pushGalleries(guid: string, onProgress?: (processed: number, total: number, status?: 'success' | 'error') => void): Promise<void> {
         const galleries = this.getBaseGalleries();
         if (!galleries || galleries.length === 0) {
             console.log('No galleries found to process.');
@@ -964,27 +1205,41 @@ export class pushNew{
         }
 
         let totalGroupings = 0;
+        // Calculate total groupings first
+        for (const gallery of galleries) {
+            totalGroupings += gallery.assetMediaGroupings.length;
+        }
         let successfulGroupings = 0;
         let failedGroupings = 0;
+        let processedCount = 0;
 
         for (const gallery of galleries) {
             try {
                 for (const mediaGrouping of gallery.assetMediaGroupings) {
-                    totalGroupings++;
+                    let groupingProcessedSuccessfully = false;
                     try {
                         const existingGallery = await this._apiClient.assetMethods.getGalleryByName(guid, mediaGrouping.name);
                         if (existingGallery) {
                             console.log(`✓ Gallery ${mediaGrouping.name} already exists, skipping creation...`);
                             successfulGroupings++;
-                            continue;
+                            groupingProcessedSuccessfully = true;
+                            // continue; // Don't continue, need to call progress callback
                         }
-                        mediaGrouping.mediaGroupingID = 0;
-                        const savedGallery = await this._apiClient.assetMethods.saveGallery(guid, mediaGrouping);
-                        console.log(`✓ Gallery created: ${mediaGrouping.name}`);
-                        successfulGroupings++;
+                        if (!groupingProcessedSuccessfully) { // Only try to save if it doesn't exist
+                            mediaGrouping.mediaGroupingID = 0;
+                            const savedGallery = await this._apiClient.assetMethods.saveGallery(guid, mediaGrouping);
+                            console.log(`✓ Gallery created: ${mediaGrouping.name}`);
+                            successfulGroupings++;
+                            groupingProcessedSuccessfully = true;
+                        }
                     } catch (error) {
                         console.error(`✗ Error processing gallery grouping ${mediaGrouping.name}:`, error);
                         failedGroupings++;
+                    }
+                    // Call progress after attempt
+                    processedCount++;
+                    if(onProgress) {
+                        onProgress(processedCount, totalGroupings, 'success');
                     }
                 }
             } catch (error) {
@@ -994,7 +1249,7 @@ export class pushNew{
         console.log(ansiColors.yellow(`Processed ${successfulGroupings}/${totalGroupings} gallery groupings (${failedGroupings} failed)`));
     }
 
-    private async pushAssets(guid: string): Promise<void> {
+    private async pushAssets(guid: string, onProgress?: (processed: number, total: number, status?: 'success' | 'error') => void): Promise<void> {
         const assets = this.getBaseAssets();
         if (!assets) return;
 
@@ -1002,12 +1257,16 @@ export class pushNew{
         const defaultContainer = await this._apiClient.assetMethods.getDefaultContainer(this._targetGuid);
         
         let totalAssets = 0;
-        let processedAssets = 0;
+        let processedAssetsCount = 0;
         
+        // First calculate total assets
+        for (const asset of assets) {
+            totalAssets += asset.assetMedias.length;
+        }
+
         for (const asset of assets) {
             try {
                 for (const media of asset.assetMedias) {
-                    totalAssets++;
                     try {
                         // Construct proper file path and URL
                         const filePath = this.getFilePath(media.originUrl).replace(/%20/g, " ");
@@ -1018,14 +1277,10 @@ export class pushNew{
                         const existingMedia = await this._referenceMapper.checkExistingAsset(originUrl, this._apiClient, this._targetGuid);
 
                         if (existingMedia) {
-                            // Store the mapping between source and target asset URLs using reference mapper
                             this._referenceMapper.addRecord('asset', media, existingMedia);
-                            // Extract just the path after the domain
                             const sourcePath = media.originUrl.split('/').slice(3).join('/');
                             const targetPath = existingMedia.originUrl.split('/').slice(3).join('/');
                             console.log(`✓ Asset ${ansiColors.underline(sourcePath.split('/').filter(Boolean).pop())} ${ansiColors.bold.grey('exists')} - ${ansiColors.green(this._targetGuid)}: mediaID:${existingMedia.mediaID}`);
-                            
-                            processedAssets++;
                             continue;
                         }
 
@@ -1047,20 +1302,26 @@ export class pushNew{
                         const file = fs.readFileSync(`agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/${filePath}`, null);
                         form.append('files', file, media.fileName);
                         const uploadedMedia = await this._apiClient.assetMethods.upload(form, folderPath, this._targetGuid, mediaGroupingID);
-                        
-                        // Store the mapping between source and target asset using reference mapper
                         this._referenceMapper.addRecord('asset', media, uploadedMedia);
                         console.log(`✓ Asset uploaded: ${media.fileName}`);
-                        processedAssets++;
                     } catch (error) {
                         console.error(`Error processing asset ${media.fileName}:`, error);
+                        if (onProgress) {
+                            onProgress(processedAssetsCount, totalAssets, 'error');
+                        }
+                    } finally {
+                        // Increment and call progress in finally block for each media item
+                        processedAssetsCount++;
+                        if (onProgress) {
+                            onProgress(processedAssetsCount, totalAssets, 'success');
+                        }
                     }
                 }
             } catch (error) {
                 console.error(`Error processing asset group:`, error);
             }
         }
-        console.log(ansiColors.yellow(`Processed ${processedAssets}/${totalAssets} assets`));
+        console.log(ansiColors.yellow(`Processed ${processedAssetsCount}/${totalAssets} assets`));
     }
 
     private getFilePath(originUrl: string): string {
@@ -1078,278 +1339,10 @@ export class pushNew{
     }
 
     async pushLinkedContentItems(contentItems: mgmtApi.ContentItem[], guid: string) {
-        let totalContent = contentItems.length;
-        let processedContent = 0;
-        let failedContent = 0;
-        let fileOperation = new fileOperations();
-
-        for (let contentItem of contentItems) {
-
-            const mappedContentItem = await mapContentItem(contentItem, this._referenceMapper);
-            console.log('mappedContentItem', mappedContentItem);
-
-            let apiClient = new mgmtApi.ApiClient(this._options);
-            try {
-                const referenceName = contentItem.properties.referenceName;
-                
-                // Get the processed container using the reference mapper
-                let containerRef = this._referenceMapper.getMapping<mgmtApi.Container>('container', 'referenceName', referenceName);
-                
-                if (!containerRef) {
-                    console.log(`✗ Container not found in reference mapper for: ${referenceName}`);
-                    failedContent++;
-                    continue;
-                }
-
-                const { source, target:targetContainer } = containerRef;
-                // contentItem.contentID = targetContainer.contentDefinitionID;
-
-                // Process content item URLs and fetch any missing assets
-                contentItem = this.updateAssetUrls(contentItem);
-
-                // Get the model to process linked content fields
-                let model;
-                try {
-                    model = await apiClient.modelMethods.getContentModel(targetContainer.contentDefinitionID, this._targetGuid);
-                } catch (error) {
-                    console.log(`✗ Error getting model for content item ${referenceName}:`, error);
-                    failedContent++;
-                    continue;
-                }
-
-                // Process linked content fields
-                for (const field of model.fields) {
-                    const fieldName = this.camelize(field.name);
-                    const fieldVal = contentItem.fields[fieldName];
-                    
-                    if (fieldVal && field.type === 'Content') {
-                        const settings = field.settings || {};
-
-                        // Handle LinkeContentDropdownValueField
-                        if (settings['LinkeContentDropdownValueField'] && settings['LinkeContentDropdownValueField'] !== 'CREATENEW') {
-                            const linkedField = this.camelize(settings['LinkeContentDropdownValueField']);
-                            const linkedContentIds = contentItem.fields[linkedField];
-                            let newLinkedContentIds = '';
-
-                            if (linkedContentIds) {
-                                const splitIds = linkedContentIds.split(',');
-                                for (const id of splitIds) {
-                                    if (this.skippedContentItems[id]) {
-                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                        fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                        continue;
-                                    }
-                                    if (this.processedContentIds[id]) {
-                                        const newSortId = this.processedContentIds[id].toString();
-                                        newLinkedContentIds = newLinkedContentIds ? `${newLinkedContentIds},${newSortId}` : newSortId;
-                                    } else {
-                                        try {
-                                            const file = fileOperation.readFile(`agility-files/${this._locale}/item/${id}.json`);
-                                            contentItem = null;
-                                            break;
-                                        } catch {
-                                            this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                            this.skippedContentItems[id] = 'OrphanRef';
-                                            fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}.`);
-                                            continue;
-                                        }
-                                    }
-                                }
-                                if (newLinkedContentIds) {
-                                    contentItem.fields[linkedField] = newLinkedContentIds;
-                                }
-                            }
-                        }
-
-                        // Handle SortIDFieldName
-                        if (settings['SortIDFieldName'] && settings['SortIDFieldName'] !== 'CREATENEW') {
-                            const sortField = this.camelize(settings['SortIDFieldName']);
-                            const sortContentIds = contentItem.fields[sortField];
-                            let newSortContentIds = '';
-
-                            if (sortContentIds) {
-                                const splitIds = sortContentIds.split(',');
-                                for (const id of splitIds) {
-                                    if (this.skippedContentItems[id]) {
-                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                        fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                        continue;
-                                    }
-                                    if (this.processedContentIds[id]) {
-                                        const newSortId = this.processedContentIds[id].toString();
-                                        newSortContentIds = newSortContentIds ? `${newSortContentIds},${newSortId}` : newSortId;
-                                    } else {
-                                        try {
-                                            const file = fileOperation.readFile(`agility-files/${this._locale}/item/${id}.json`);
-                                            contentItem = null;
-                                            break;
-                                        } catch {
-                                            this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                            this.skippedContentItems[id] = 'OrphanRef';
-                                            fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID} as the content is orphan. Orphan ID ${id}.`);
-                                            continue;
-                                        }
-                                    }
-                                }
-                                if (newSortContentIds) {
-                                    contentItem.fields[sortField] = newSortContentIds;
-                                }
-                            }
-                        }
-
-                        // Handle contentid and referencename
-                        if (typeof fieldVal === 'object') {
-                            if ('contentid' in fieldVal) {
-                                const linkedContentId = fieldVal.contentid;
-                                if (this.skippedContentItems[linkedContentId]) {
-                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                    continue;
-                                }
-                                if (this.processedContentIds[linkedContentId]) {
-                                    try {
-                                        const file = fileOperation.readFile(`agility-files/${this._locale}/item/${linkedContentId}.json`);
-                                        const extractedContent = JSON.parse(file) as mgmtApi.ContentItem;
-                                        contentItem.fields[fieldName] = extractedContent.properties.referenceName;
-                                    } catch {
-                                        contentItem = null;
-                                        break;
-                                    }
-                                }
-                            }
-                            if ('referencename' in fieldVal) {
-                                const refName = fieldVal.referencename;
-                                try {
-                                    const container = await apiClient.containerMethods.getContainerByReferenceName(refName, this._targetGuid);
-                                    if (!container) {
-                                        this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                        fileOperation.appendLogFile(`\n Unable to find a container for content item referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                        continue;
-                                    }
-                                    if ('sortids' in fieldVal) {
-                                        contentItem.fields[fieldName].referencename = fieldVal.referencename;
-                                    } else {
-                                        contentItem.fields[fieldName] = fieldVal.referencename;
-                                    }
-                                } catch {
-                                    this.skippedContentItems[contentItem.contentID] = contentItem.properties.referenceName;
-                                    fileOperation.appendLogFile(`\n Unable to process content item for referenceName ${contentItem.properties.referenceName} with contentId ${contentItem.contentID}.`);
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!contentItem) {
-                    continue;
-                }
-
-
-
-
-                // console.log('Content Item:',contentItem)
-                // Create or update content item
-                let contentPayload;
-
-
-
-/// this won't ever work because the contentID is not the same as the contentID in the payload
-// what we need to do is lookup the container this is going into, and get a list of the contentIDs
-
-
-                // const existingContentItem = await this._apiClient.contentMethods.getContentItem(contentItem.contentID, this._targetGuid, this._locale);
-                // console.log('existingContentItem:',existingContentItem)
-
-
-                try {
-                    // Update asset URLs in content fields
-                    const processedContentItem = this.updateAssetUrls(contentItem);
-
-
-                    // console.log('Processed Content Item:',processedContentItem)
-                    contentPayload = {
-                        ...processedContentItem,
-                        // contentID: existingContentItem ? existingContentItem.contentID : -1,
-                        properties: {
-                            ...processedContentItem.properties,
-                            referenceName: targetContainer.referenceName
-                        }
-                    };
-
-                    // Update any remaining URLs in the payload
-                    contentPayload = this.updateAssetUrls(contentPayload);
-
-
-                    // theres a couple issues I see in the payload, which is in fields > category > contentid
-                    // this needs to be mapped back to what the new contentID
-                    // for example 110 is actually  453 of the normal content items
-
-                    // there is also a categoryID, which is another normal content item, but as a string
-                    // 109 is actually 471
-
-                    console.log('Content Payload:',contentPayload)
-
-                    const contentIdArray = await apiClient.contentMethods.saveContentItem(contentPayload, this._targetGuid, this._locale);
-                    console.log('Content ID Array:',contentIdArray)
-                    if (contentIdArray && contentIdArray[0] > 0) {
-                        const newContentItem = {
-                            ...contentPayload,
-                            contentID: contentIdArray[0]
-                        } as mgmtApi.ContentItem;
-                        // Update both base and specialized reference mappings
-                        this._referenceMapper.addRecord('content', contentItem, newContentItem);
-                        console.log(`✓ Nested content item created - Source: ${contentItem.properties.referenceName} (ID: ${contentItem.contentID}), Target: ${newContentItem.properties.referenceName} (ID: ${newContentItem.contentID})`);
-                        processedContent++;
-                    } else {
-                        console.log(`✗ Failed to create linked content item ${contentItem.properties.referenceName}`);
-                        failedContent++;
-                    }
-                } catch (error) {
-                    console.log(`✗ Error creating/updating linked content item ${contentItem.properties.referenceName}:`, error);
-                    if (error.response) {
-                        console.log('API Response:', error.response.data);
-                    }
-                    failedContent++;
-                }
-            } catch (error) {
-                console.log(`✗ Error processing linked content item ${contentItem.properties.referenceName}:`, error);
-                if (error.response) {
-                    console.log('API Response:', error.response.data);
-                }
-                failedContent++;
-            }
-        }
-        console.log(ansiColors.yellow(`Processed ${processedContent}/${totalContent} linked content items (${failedContent} failed)`));
+        // REMOVED - Use ContentPusher class now
     }
 
     private async processLinkedContentFields(contentItem: mgmtApi.ContentItem, path: string): Promise<void> {
-        // Get all linked content items
-        const linkedContentItems: mgmtApi.ContentItem[] = [];
-        
-        // Check each field for linked content
-        Object.entries(contentItem.fields).forEach(([fieldName, fieldValue]) => {
-            if (typeof fieldValue === 'string' && fieldValue.includes(',')) {
-                const contentIds = fieldValue.split(',').map(id => id.trim());
-                contentIds.forEach(contentId => {
-                    if (!isNaN(Number(contentId))) {
-                        const contentRef = this._referenceMapper.getMapping<mgmtApi.ContentItem>('content', 'contentID', Number(contentId));
-                        if (contentRef?.source) {
-                            linkedContentItems.push(contentRef.source);
-                        }
-                    }
-                });
-            } else if (typeof fieldValue === 'object' && fieldValue !== null && 'contentid' in fieldValue) {
-                const contentRef = this._referenceMapper.getMapping<mgmtApi.ContentItem>('content', 'contentID', fieldValue.contentid);
-                if (contentRef?.source) {
-                    linkedContentItems.push(contentRef.source);
-                }
-            }
-        });
-
-        // Add linked content items to reference mapper
-        for (const linkedContentItem of linkedContentItems) {
-            this._referenceMapper.addRecord('content', linkedContentItem, null);
-        }
+        // REMOVED - Use ContentPusher class now
     }
 }

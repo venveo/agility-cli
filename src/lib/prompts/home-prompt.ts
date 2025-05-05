@@ -1,12 +1,12 @@
 import inquirer from "inquirer";
 import colors from "ansi-colors";
 import { pullFiles } from "./pull-prompt";
-import { listInstances } from "./instances/list";
+import { listInstances } from "../instances/list";
 import process from "process";
-import { instanceSelector } from "./instances/instance-list";
+import { instanceSelector } from "../instances/instance-list";
 import { getInstance, instancesPrompt } from "./instance-prompt";
-import { forceDevMode, forceLocalMode } from "..";
-import { Auth } from "../auth";
+import { forceDevMode, forceLocalMode } from "../..";
+import { Auth } from "../../auth";
 import { AgilityInstance } from "types/instance";
 
 export async function homePrompt(prompt?: any) {
@@ -33,27 +33,7 @@ export async function homePrompt(prompt?: any) {
             
 
 
-        const selectedInstance: AgilityInstance = forceLocalMode || forceDevMode ? {
-          guid: 'ec5aabfb-u', 
-          previewKey: '', 
-          fetchKey: '',
-          websiteDetails: {
-            orgCode: null,
-            orgName: null,
-            websiteName: null,
-            websiteNameStripped: null,
-            displayName: null,
-            guid: '95dc2671-d',
-            websiteID: null,
-            isCurrent: null,
-            managerUrl: null,
-            version: null,
-            isOwner: null,
-            isDormant: null,
-            isRestoring: null
-          }
-        } : await instanceSelector();
-        (forceLocalMode || forceDevMode) ?? console.log('Auto-selected target instance: ', selectedInstance.guid);
+        const selectedInstance: AgilityInstance = await instanceSelector();
             // const selectedInstance = await instanceSelector();
             const keys = await getInstance(selectedInstance);
             

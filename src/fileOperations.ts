@@ -90,10 +90,8 @@ export class fileOperations{
             
             // Verify the final directory exists
             if (fs.existsSync(normalizedPath)) {
-                // console.log(`Successfully created directory structure: ${normalizedPath}`);
                 return true;
             } else {
-                // console.error(`Failed to create directory structure: ${normalizedPath}`);
                 return false;
             }
         } catch (error) {
@@ -147,7 +145,6 @@ export class fileOperations{
                         resolve({});
                     })
                     .on('error', (err) => {
-                        // console.error(`Error writing file ${targetFile}:`, err);
                         reject(err);
                     });
         

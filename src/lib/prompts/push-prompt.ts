@@ -1,27 +1,27 @@
 import inquirer from "inquirer";
 import fuzzy from "fuzzy";
 import colors from "ansi-colors";
-import { instanceSelector } from "./instances/instance-list";
+import { instanceSelector } from "../instances/instance-list";
 import { homePrompt } from "./home-prompt";
-import { Auth } from "../auth";
-import { model } from "../model";
-import { sync } from "../sync";
-import { asset } from "../asset";
-import { container } from "../container";
-import { createMultibar } from "../multibar";
+import { Auth } from "../../auth";
+import { model } from "../../model";
+import { sync } from "../../sync";
+import { asset } from "../../asset";
+import { container } from "../../container";
+import { createMultibar } from "../../multibar";
 
 import * as mgmtApi from "@agility/management-sdk";
-import { fileOperations } from "../fileOperations";
+import { fileOperations } from "../../fileOperations";
 import { get } from "http";
 import { localePrompt } from "./locale-prompt";
 import { channelPrompt } from "./channel-prompt";
 import { baseUrlPrompt, getBaseURLfromGUID } from "./base-url-prompt";
 import { isPreviewPrompt } from "./isPreview-prompt";
 import { elementsPrompt } from "./elements-prompt";
-import { push } from "../push";
-import { pushNew } from "../push_new";
-import { AgilityInstance } from "../types/instance";
-import { forceDevMode, forceLocalMode } from "../index";
+import { push } from "../../push";
+import { pushNew } from "../../push_new";
+import { AgilityInstance } from "../../types/instance";
+import { forceDevMode, forceLocalMode, blessedUIEnabled } from "../../index";
 
 inquirer.registerPrompt("fuzzypath", require("inquirer-fuzzy-path"));
 
@@ -73,7 +73,7 @@ export async function pushFiles(instance: any) {
     options.baseUrl = auth.determineBaseUrl(guid);
 
     console.log(colors.yellow("Pushing your instance..."));
-    let push = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview);
+    let push = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview, blessedUIEnabled);
     await push.initialize();
     push.pushInstance();
   } else {

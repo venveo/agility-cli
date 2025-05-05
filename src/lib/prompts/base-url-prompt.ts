@@ -1,5 +1,5 @@
 import inquirer from "inquirer";
-import { forceDevMode, forceLocalMode } from "..";
+import { forceDevMode, forceLocalMode } from "../..";
 
 
 export async function getBaseURLfromGUID(guid: string): Promise<string> {

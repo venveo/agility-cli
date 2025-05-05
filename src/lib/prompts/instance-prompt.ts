@@ -1,21 +1,26 @@
 import inquirer from "inquirer";
-import { Auth } from "../auth";
+import { Auth } from "../../auth";
 import { homePrompt } from "./home-prompt";
 import { fetchAPIPrompt, fetchCommandsPrompt } from "./fetch-prompt";
 import { pullFiles } from "./pull-prompt";
-import generateTypes from "./utilities/generate-typescript-models";
+import generateTypes from "../utilities/generate-typescript-models";
 import { pushFiles } from "./push-prompt";
-import Clean from "./instances/clean";
+import Clean from "../../clean";
 import { localePrompt } from "./locale-prompt";
-import { generateEnv } from "./utilities/generate-env";
-import { generateSitemap } from "./utilities/generate-sitemap";
-import generateReactComponents from "./utilities/generate-components";
-import { AgilityInstance } from "../types/instance";
+import { generateEnv } from "../utilities/generate-env";
+import { generateSitemap } from "../utilities/generate-sitemap";
+import generateReactComponents from "../utilities/generate-components";
+import { AgilityInstance } from "../../types/instance";
 const FormData = require("form-data");
 
 inquirer.registerPrompt("search-list", require("inquirer-search-list"));
 
 export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
+
+  const auth = new Auth();
+  const isAgilityDev = await auth.getUser(selectedInstance.guid);
+  console.log('isAgilityDev', isAgilityDev)
+
   const choices = [
     new inquirer.Separator(),
     { name: "Download assets, models & content from an instance", value: "pull" },
@@ -26,13 +31,19 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
     new inquirer.Separator(),
     { name: "Generate .env.local", value: "env" },
     { name: "Generate sitemap.xml", value: "sitemap" },
-    { name: "Generate TypeScript interfaces (beta)", value: "types" },
-    { name: "Generate React Components (beta)", value: "reactcomponents" },
-    new inquirer.Separator(),
-    { name: "Clean instance (warning: data loss)", value: "clean" },
+  
     new inquirer.Separator(),
     { name: "< Back to Home", value: "home" },
   ];
+
+
+  if(isAgilityDev.jobRole === 'developer'){
+    choices.push({ name: "Generate TypeScript interfaces (beta)", value: "types" });
+    choices.push({ name: "Generate React Components (beta)", value: "reactcomponents" });
+    choices.push(  new inquirer.Separator() )
+    choices.push({ name: "Clean instance (warning: data loss)", value: "clean" })
+  }
+  
 
   const questions = [
     {

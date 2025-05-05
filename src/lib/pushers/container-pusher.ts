@@ -1,7 +1,7 @@
 import * as mgmtApi from "@agility/management-sdk";
 import { ReferenceMapper } from "../mapper";
 import { findContainerInTargetInstance } from "../finders/container-finder";
-import { ContainerMapper } from "../container-mapper";
+import { ContainerMapper } from "../mappers/container-mapper";
 import ansiColors from "ansi-colors";
 
 export class ContainerPusher {
@@ -21,12 +21,13 @@ export class ContainerPusher {
     this.targetGuid = targetGuid;
   }
 
-  async pushContainers(containers: mgmtApi.Container[]): Promise<void> {
+  async pushContainers(containers: mgmtApi.Container[], onProgress?: (processed: number, total: number, status?: 'success' | 'error') => void): Promise<void> {
     let totalContainers = containers.length;
-    let processedContainers = 0;
+    let processedCount = 0;
     let failedContainers = 0;
 
     for (const container of containers) {
+      let containerProcessedSuccessfully = false;
       // First check if container exists in target using findContainerInTargetInstance
       let existingTargetContainer: mgmtApi.Container | null = null;
       let mappedSourceContainer: mgmtApi.Container | null = null;
@@ -43,7 +44,7 @@ export class ContainerPusher {
           `✓ Container ${ansiColors.underline(container.referenceName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green("Source")}: ${container.contentViewID} ${ansiColors.green(this.targetGuid)}: referenceName:${existingTargetContainer.referenceName} contentViewID:${existingTargetContainer.contentViewID}`
         );
         this.referenceMapper.addRecord("container", container, existingTargetContainer);
-        processedContainers++;
+        containerProcessedSuccessfully = true;
         continue;
       } 
 
@@ -85,7 +86,7 @@ export class ContainerPusher {
             savedContainer.contentViewID
           }`
         );
-        processedContainers++;
+        containerProcessedSuccessfully = true;
       } catch (error) {
         console.error(`Error creating container ${container.referenceName}:`);
         if (error.response) {
@@ -93,10 +94,12 @@ export class ContainerPusher {
         }
         failedContainers++;
       }
-    }
 
-    console.log(
-      ansiColors.yellow(`✓ Processed ${processedContainers}/${totalContainers} containers (${failedContainers} failed)`)
-    );
+      // Increment processed count and call callback regardless of success/fail
+      processedCount++;
+      if (onProgress) {
+        onProgress(processedCount, totalContainers, containerProcessedSuccessfully ? 'success' : 'error');
+      }
+    }
   }
 }

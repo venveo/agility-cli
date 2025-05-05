@@ -2,14 +2,14 @@ import inquirer from "inquirer";
 import * as mgmtApi from "@agility/management-sdk";
 import * as fetchApi from "@agility/content-fetch";
 import * as cliProgress from "cli-progress";
-import { fileOperations } from "../../fileOperations";
-import { Auth } from "../../auth";
-import { createMultibar } from "../../multibar";
-import { asset } from "../../asset";
-import { homePrompt } from "../home-prompt";
+import { fileOperations } from "./fileOperations";
+import { Auth } from "./auth";
+import { createMultibar } from "./multibar";
+import { asset } from "./asset";
+import { homePrompt } from "./lib/prompts/home-prompt";
 import ansiColors from "ansi-colors";
-import { assetNew } from "../../asset_new";
-import { AgilityInstance } from "../../types/instance";
+import { assetNew } from "./asset_new";
+import { AgilityInstance } from "./types/instance";
 const fs = require("fs");
 const path = require("path");
 const FormData = require("form-data");
@@ -78,13 +78,13 @@ class Clean {
         const mappingsPath = `agility-files/${this._guid}/mappings`;
         if (fs.existsSync(mappingsPath)) {
             fs.rmSync(mappingsPath, { recursive: true, force: true });
-            console.log(`✓ Deleted mappings folder for instance ${this._guid}`);
+            console.log(`\n✓ Deleted mappings folder for instance ${this._guid}`);
         }
 
       } catch (err) {
         console.log("Error cleaning instance", err);
       } finally {
-        console.log(ansiColors.green("🗑️ Instance cleaned successfully"));
+        console.log(ansiColors.green("\n🗑️ Instance cleaned successfully"));
         return true;
       }
   

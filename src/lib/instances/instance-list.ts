@@ -3,7 +3,7 @@ import { Auth } from "../../auth";
 import { fileOperations } from "../../fileOperations";
 
 import colors from "ansi-colors";
-import { homePrompt } from "../home-prompt";
+import { homePrompt } from "../prompts/home-prompt";
 const FormData = require("form-data");
 
 export async function instanceSelector() {
