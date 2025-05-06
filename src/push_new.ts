@@ -214,6 +214,7 @@ export class pushNew{
                 label: ' Logs ',
                 border: { type: 'line' },
                 style: { border: { fg: 'green' } },
+                padding: { left: 2, right: 1, top: 1, bottom: 1 },
                 scrollable: true,
                 alwaysScroll: true,
                 scrollbar: {

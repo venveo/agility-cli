@@ -26,9 +26,15 @@ function areModelsDifferent(sourceModel: mgmtApi.Model, targetModel: mgmtApi.Mod
     sourceCopy.fields.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     targetCopy.fields.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    // Ignore field IDs within each field object
-    sourceCopy.fields.forEach(field => delete field.fieldID);
-    targetCopy.fields.forEach(field => delete field.fieldID);
+    // Ignore field IDs and itemOrder within each field object
+    sourceCopy.fields.forEach(field => {
+        delete field.fieldID;
+        delete field.itemOrder; // Also ignore itemOrder
+    });
+    targetCopy.fields.forEach(field => {
+        delete field.fieldID;
+        delete field.itemOrder; // Also ignore itemOrder
+    });
 
     // Perform a deep comparison
     return !_.isEqual(sourceCopy, targetCopy);
