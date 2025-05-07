@@ -1,11 +1,11 @@
 import inquirer from "inquirer";
-import { Auth } from "../../auth";
+import { Auth } from "../services/auth";
 import { homePrompt } from "./home-prompt";
 import { fetchAPIPrompt, fetchCommandsPrompt } from "./fetch-prompt";
 import { pullFiles } from "./pull-prompt";
 import generateTypes from "../utilities/generate-typescript-models";
 import { pushFiles } from "./push-prompt";
-import Clean from "../../clean";
+import Clean from "../services/clean";
 import { localePrompt } from "./locale-prompt";
 import { generateEnv } from "../utilities/generate-env";
 import { generateSitemap } from "../utilities/generate-sitemap";
@@ -18,7 +18,7 @@ inquirer.registerPrompt("search-list", require("inquirer-search-list"));
 export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
 
   const auth = new Auth();
-  const { jobRole} = await auth.getUser(selectedInstance.guid);
+  // const { jobRole} = await auth.getUser(selectedInstance.guid);
 
   const choices = [
     new inquirer.Separator(),
@@ -36,12 +36,12 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
   ];
 
 
-  if(jobRole === 'developer'){
-    choices.push({ name: "Generate TypeScript interfaces (beta)", value: "types" });
-    choices.push({ name: "Generate React Components (beta)", value: "reactcomponents" });
-    choices.push(  new inquirer.Separator() )
-    choices.push({ name: "Clean instance (warning: data loss)", value: "clean" })
-  }
+  // if(jobRole === 'developer'){
+  //   choices.push({ name: "Generate TypeScript interfaces (beta)", value: "types" });
+  //   choices.push({ name: "Generate React Components (beta)", value: "reactcomponents" });
+  //   choices.push(  new inquirer.Separator() )
+  //   choices.push({ name: "Clean instance (warning: data loss)", value: "clean" })
+  // }
   
 
   const questions = [
@@ -139,8 +139,17 @@ export async function getInstance(selectedInstance: AgilityInstance) {
   try {
     let currentWebsite = user.websiteAccess.find((website: any) => website.guid === guid);
 
-    let previewKey = await auth.getPreviewKey(guid);
-    let fetchKey = await auth.getFetchKey(guid);
+    let previewKey = null;
+    try {
+    previewKey = await auth.getPreviewKey(guid);
+  } catch {
+  }
+
+    let fetchKey = null;
+    try {
+      fetchKey = await auth.getFetchKey(guid);
+    } catch {
+    }
 
     return {
       guid,

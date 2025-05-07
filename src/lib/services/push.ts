@@ -1,37 +1,36 @@
 import * as mgmtApi  from '@agility/management-sdk';
 import { fileOperations } from './fileOperations';
 import * as fs from 'fs';
-// Use require instead of import for blessed and blessed-contrib
 const blessed = require('blessed');
 const contrib = require('blessed-contrib');
-// import * as blessed from 'blessed'; 
-// import * as contrib from 'blessed-contrib';
-const FormData = require('form-data');
 import * as cliProgress from 'cli-progress';
 import ansiColors from 'ansi-colors';
-import { homePrompt } from './lib/prompts/home-prompt';
+import { homePrompt } from '../prompts/home-prompt';
 import { Auth } from './auth';
-import { ReferenceMapper } from './lib/mapper';
-import { container } from 'container';
-import { mapContentItem } from './lib/mappers/content-item-mapper';
-import { findContainerInTargetInstance } from './lib/finders/container-finder';
-import { ContainerPusher } from './lib/pushers/container-pusher';
-import { ContentPusher } from './lib/pushers/content-item-pusher';
-import { pushAssets } from './lib/pushers/asset-pusher';
-import { pushGalleries } from './lib/pushers/gallery-pusher';
-import { pushModels } from './lib/pushers/model-pusher';
-import { pushTemplates } from './lib/pushers/template-pusher';
-import { pushPages } from './lib/pushers/page-pusher';
-// // Extend the PageItem type to include pageTemplateID
-// const wrapAnsi = require('wrap-ansi');
-declare module '@agility/management-sdk' {
-    interface PageItem {
-        pageTemplateID?: number;
-        
-    }
-}
+import { ReferenceMapper } from '../mapper';
+import {
+    pushContainers,
+    pushContentItems,
+    pushAssets,
+    pushGalleries,
+    pushModels,
+    pushTemplates,
+    pushPages
+} from '../pushers';
+import { getModelsFromFileSystem } from '../getters/filesystem/get-models';
+import { getGalleriesFromFileSystem } from '../getters/filesystem/get-galleries';
+import { getAssetsFromFileSystem } from '../getters/filesystem/get-assets';
+import { getContainersFromFileSystem } from '../getters/filesystem/get-containers';
+import { getTemplatesFromFileSystem } from '../getters/filesystem/get-templates';
+import { getPagesFromFileSystem } from '../getters/filesystem/get-pages';
+import { getContentItemsFromFileSystem } from '../getters/filesystem/get-content-items';
+// declare module '@agility/management-sdk' {
+//     interface PageItem {
+//         pageTemplateID?: number;
+//     }
+// }
 
-export class pushNew{
+export class push {
     _options : mgmtApi.Options;
     _multibar: cliProgress.MultiBar;
     _guid: string;
@@ -46,17 +45,22 @@ export class pushNew{
     processedGalleries: {[key: number]: number};
     processedTemplates: {[key: string]: number}; //format Key -> pageTemplateName, Value pageTemplateID.
     processedPages : {[key: number]: number}; //format Key -> old page id, Value new page id.
-    private settings: any;
-    private processedCount: number = 0;
     processedAssets: { [key: string]: string; };
     processedContainers: { [key: number]: number; };
+    private settings: any;
+    private processedCount: number = 0;
     private _apiClient: mgmtApi.ApiClient;
     private _referenceMapper: ReferenceMapper;
     private failedContainers: number = 0;
     private failedContent: number = 0;
     private _useBlessedUI: boolean = false;
     private elements: any;
-    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean, useBlessedUI?: boolean, elements?: any){
+    private rootPath: string;
+    private legacyFolders: boolean;
+    private dryRun: boolean;
+    private contentFolder: string;
+
+    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean, useBlessedUI?: boolean, elements?: any, rootPath?: string, legacyFolders?: boolean, dryRun?: boolean, contentFolder?: string ){
         // Handle SSL certificate verification for local development
         if (process.env.NODE_ENV === 'development' || process.env.LOCAL) {
             process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -83,6 +87,10 @@ export class pushNew{
         this._referenceMapper = new ReferenceMapper(this._guid, this._targetGuid);
         this._useBlessedUI = useBlessedUI ?? false;
         this.elements = elements ?? [];
+        this.rootPath = rootPath;
+        this.legacyFolders = legacyFolders ?? false;
+        this.dryRun = dryRun ?? false;
+        this.contentFolder = contentFolder ?? null;
     }
 
     async initialize() {
@@ -92,6 +100,9 @@ export class pushNew{
 
     async pushInstance(): Promise<void> {
         
+
+        await this.initialize();
+
         let screen: any | null = null;
         let logContainer: any | null = null;
         let progressContainerBox: any | null = null;
@@ -303,7 +314,14 @@ export class pushNew{
                         const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
                         updateProgress(galleryStepIndex, status || 'success', percentage); 
                     };
-                    galleries = this.getBaseGalleries();
+                    galleries = getGalleriesFromFileSystem(
+                        this._guid,
+                        this._locale,
+                        this._isPreview,
+                        this._referenceMapper,
+                        this.rootPath,
+                        this.legacyFolders
+                    ) || []; // Ensure galleries is an array
                     const galleryResult = await pushGalleries(
                         galleries, 
                         this._targetGuid, 
@@ -330,7 +348,14 @@ export class pushNew{
                         const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
                         updateProgress(assetStepIndex, status || 'success', percentage);
                     };
-                    const assets = this.getBaseAssets(); 
+                    const assets = getAssetsFromFileSystem(
+                        this._guid,
+                        this._locale,
+                        this._isPreview,
+                        this._referenceMapper,
+                        this.rootPath,
+                        this.legacyFolders
+                    ) || []; 
                     const assetResult = await pushAssets(
                         assets, 
                         galleries,
@@ -357,7 +382,14 @@ export class pushNew{
                 let modelStatus: 'success' | 'error' = 'success';
                 const modelStepIndex = currentStep;
                 try {
-                    const models = await this.getModels();
+                    const models = await getModelsFromFileSystem(
+                        this._guid,
+                        this._locale,
+                        this._isPreview,
+                        this._referenceMapper,
+                        this.rootPath,
+                        this.legacyFolders
+                    );
                     
                     const modelProgressCallback = (processed: number, total: number, status?: 'success' | 'error') => {
                         const percentage = total > 0 ? Math.round((processed / total) * 100) : 0;
@@ -387,11 +419,18 @@ export class pushNew{
                 let containerStatus: 'success' | 'error' = 'success';
                 const containerStepIndex = currentStep;
                 try{
-                    const containers = this.getBaseContainers();
+                    const containers = getContainersFromFileSystem(
+                        this._guid,
+                        this._locale,
+                        this._isPreview,
+                        this._referenceMapper,
+                        this.rootPath,
+                        this.legacyFolders
+                    );
                     if (!containers || containers.length === 0) {
                         console.log('No containers found to push');
                     } else {
-                        const containerPusher = new ContainerPusher(
+                        const containerPusher = new pushContainers(
                             this._apiClient,
                             this._referenceMapper,
                             this._targetGuid,
@@ -416,11 +455,18 @@ export class pushNew{
                 let contentStatus: 'success' | 'error' = 'success';
                 const contentStepIndex = currentStep;
                 try{
-                    const allContentItems = await this.getBaseContentItems();
+                    const allContentItems = await getContentItemsFromFileSystem(
+                        this._guid,
+                        this._locale,
+                        this._isPreview,
+                        this._referenceMapper,
+                        this.rootPath,
+                        this.legacyFolders
+                    );
                     if (!allContentItems || allContentItems.length === 0) {
                         console.log('No content items found to push');
                     } else {
-                        const contentPusher = new ContentPusher(
+                        const contentPusher = new pushContentItems(
                             this._apiClient,
                             this._referenceMapper,
                             this._targetGuid,
@@ -454,7 +500,13 @@ export class pushNew{
                     if (!this._useBlessedUI) console.log('Processing templates...'); 
                     else logContainer?.log('Processing templates...');
                     
-                    const templates = await this.getBaseTemplates();
+                    const templates = await getTemplatesFromFileSystem(
+                        this._guid,
+                        this._locale,
+                        this._isPreview,
+                        this.rootPath,
+                        this.legacyFolders
+                    );
                     
                     if(!templates || templates.length === 0){
                         console.log('No templates found to push');
@@ -493,7 +545,14 @@ export class pushNew{
                     if (!this._useBlessedUI) console.log('Processing pages...');
                     else logContainer?.log('Processing pages...');
                     
-                    const pages = await this.getBasePages(this._locale); 
+                    const pages = await getPagesFromFileSystem(
+                        this._guid,
+                        this._locale,
+                        this._isPreview,
+                        this._referenceMapper,
+                        this.rootPath,
+                        this.legacyFolders
+                    ); 
                     
                     if(!pages || pages.length === 0){
                          console.log('No pages found to push');
@@ -565,400 +624,14 @@ export class pushNew{
         }
     }
 
-    /////////////////////////////START: METHODS FOR DEBUG ONLY/////////////////////////////////////////////////////////////////
-    createAllContent(){
-        let fileOperation = new fileOperations();
-        try{
-            let files = fileOperation.readFile('agility-files/all/all.json');
-            let contentItems = JSON.parse(files) as mgmtApi.ContentItem[];
-
-            return contentItems;
-        } catch(err){
-            console.log(err);
-        }
-        
-    }
-
-    createLinkedContent(){
-        let fileOperation = new fileOperations();
-        try{
-            let files = fileOperation.readFile('agility-files/linked/linked.json');
-            let contentItems = JSON.parse(files) as mgmtApi.ContentItem[];
-
-            return contentItems;
-        } catch(err){
-            console.log(err);
-        }
-        
-    }
-
-    createNonLinkedContent(){
-        let fileOperation = new fileOperations();
-        try{
-            let files = fileOperation.readFile('agility-files/nonlinked/nonlinked.json');
-            let contentItems = JSON.parse(files) as mgmtApi.ContentItem[];
-
-            return contentItems;
-        } catch(err){
-            console.log(err);
-        }
-        
-    }
-    /////////////////////////////END: METHODS FOR DEBUG ONLY/////////////////////////////////////////////////////////////////
-
-    private async getModels(): Promise<mgmtApi.Model[]> {
-        const models = this.getBaseModels() || [];
-        return models;
-    }
-
-    private getBaseModels(): mgmtApi.Model[] {
-        const modelsPath = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/models`;
-        const modelFiles = fs.readdirSync(modelsPath);
-        return modelFiles.map(file => {
-            const modelData = JSON.parse(fs.readFileSync(`${modelsPath}/${file}`, 'utf8'));
-            const model = modelData as mgmtApi.Model;
-            // Add source model to reference mapper
-            this._referenceMapper.addRecord('model', model, null);
-            return model;
-        });
-    }
-
-    private async getLinkedModels(): Promise<mgmtApi.Model[]> {
-        const models = this.getBaseModels() || [];
-        const linkedModels = models.filter(model => this.isLinkedModel(model));
-        
-        // Add linked models to specialized reference mapping
-        for (const model of linkedModels) {
-            // this._referenceMapper.addRecord('linked-model', model, null);
-        }
-        
-        return linkedModels;
-    }
-
-    private async getNormalModels(): Promise<mgmtApi.Model[]> {
-        const models = this.getBaseModels() || [];
-        const normalModels = models.filter(model => !this.isLinkedModel(model));
-        
-        // Add normal models to specialized reference mapping
-        for (const model of normalModels) {
-            // this._referenceMapper.addRecord('normal-model', model, null);
-        }
-        
-        return normalModels;
-    }
-
-    getBaseModel(modelId: string, baseFolder?: string){
-        if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = 'agility-files';
-        }
-        let fileOperation = new fileOperations();
-        try{
-            let file = fileOperation.readFile(`${baseFolder}/models/${modelId}.json`);
-            let model = JSON.parse(file) as mgmtApi.Model;
-            return model;
-        } catch {
-            fileOperation.appendLogFile(`\n Model with ID ${modelId} was not found in the source Instance.`);
-            return null;
-        }
-    }
-
-    private getBaseGalleries(): mgmtApi.assetGalleries[] {
-        let fileOperation = new fileOperations();
-        try{
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/galleries`);
-
-            let assetGalleries: mgmtApi.assetGalleries[] = [];
-
-            for(let i = 0; i < files.length; i++){
-                let assetGallery = JSON.parse(files[i]) as mgmtApi.assetGalleries;
-                // Add source gallery to reference mapper immediately
-                this._referenceMapper.addRecord('gallery', assetGallery, null);
-                assetGalleries.push(assetGallery);
-            }
-            return assetGalleries;
-        } catch{
-            fileOperation.appendLogFile(`\n No Galleries were found in the source Instance to process.`);
-            return null;
-        }
-    }
-
-    private getBaseAssets(): mgmtApi.AssetMediaList[] {
-        let fileOperation = new fileOperations();
-        try{
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/assets/json`);
-
-            let assets: mgmtApi.AssetMediaList[] = [];
-
-            for(let i = 0; i < files.length; i++){
-                let file = JSON.parse(files[i]) as mgmtApi.AssetMediaList;
-                // Add each media item individually to the reference mapper
-                for (const media of file.assetMedias) {
-                    this._referenceMapper.addRecord('asset', media, null);
-                }
-                assets.push(file);
-            }
-            return assets;
-        } catch {
-            fileOperation.appendLogFile(`\n No Assets were found in the source Instance to process.`);
-            return null;
-        }
-    }
-
-    private getBaseContainers(): mgmtApi.Container[] {
-        const containersPath = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/containers`;
-        const containerFiles = fs.readdirSync(containersPath);
-        const containers: mgmtApi.Container[] = [];
-
-        for (const file of containerFiles) {
-            const containerData = JSON.parse(fs.readFileSync(`${containersPath}/${file}`, 'utf8'));
-            const container = containerData as mgmtApi.Container;
-            // Add source container to reference mapper immediately
-            this._referenceMapper.addRecord('container', container, null);
-            containers.push(container);
-        }
-
-        return containers;
-    }
-
-    async getBaseTemplates(baseFolder?: string): Promise<mgmtApi.PageModel[]> {
-        if(baseFolder === undefined || baseFolder === ''){
-            baseFolder = 'agility-files';
-        }
-        let fileOperation = new fileOperations();
-        try{
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/templates`, baseFolder);
-
-            let pageModels : mgmtApi.PageModel[] = [];
-
-            for(let i = 0; i < files.length; i++){
-                let pageModel = JSON.parse(files[i]) as mgmtApi.PageModel;
-                // Add source template to reference mapper immediately
-                // this._referenceMapper.addRecord('template', pageModel, null);
-                pageModels.push(pageModel);
-            }
-            return pageModels;
-        } catch {
-            fileOperation.appendLogFile(`\n No Page Templates were found in the source Instance to process.`);
-            return null;
-        }
-    }
-
-    async getBasePages(locale: string): Promise<mgmtApi.PageItem[]> {
-        let fileOperation = new fileOperations();
-        try{
-            let files = fileOperation.readDirectory(`${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/pages`);
-
-            let pages : mgmtApi.PageItem[] = [];
-
-            for(let i = 0; i < files.length; i++){
-                let page = JSON.parse(files[i]) as mgmtApi.PageItem;
-                // Add source page to reference mapper immediately
-                this._referenceMapper.addRecord('page', page, null);
-                pages.push(page);
-            }
-            return pages;
-        } catch{
-            fileOperation.appendLogFile(`\n No Pages were found in the source Instance to process.`);
-            return null;
-        }
-    }
-
-    private async getBaseContentItems(): Promise<mgmtApi.ContentItem[]> {
-        const contentPath = `agility-files/${this._guid}/${this._locale}/${this._isPreview ? 'preview':'live'}/item`;
-        const contentFiles = fs.readdirSync(contentPath);
-        const contentItems: mgmtApi.ContentItem[] = [];
-
-        for (const file of contentFiles) {
-            const contentItem = JSON.parse(fs.readFileSync(`${contentPath}/${file}`, 'utf8'));
-            // Add source content to reference mapper
-            this._referenceMapper.addRecord('content', contentItem, null);
-            contentItems.push(contentItem);
-        }
-
-        return contentItems;
-    }
-
-    private isLinkedContent(contentItem: mgmtApi.ContentItem): boolean {
-        // Check if content item has any linked content fields
-        return Object.values(contentItem.fields).some(field => {
-            if (typeof field === 'string') {
-                return field.includes(',') && !isNaN(Number(field.split(',')[0]));
-            }
-            if (typeof field === 'object' && field !== null) {
-                return 'contentid' in field;
-            }
-            return false;
-        });
-    }
-
-    private async getLinkedContent(guid: string, contentItems: mgmtApi.ContentItem[]): Promise<mgmtApi.ContentItem[]> {
-        let linkedContentItems: mgmtApi.ContentItem[] = [];
-        let apiClient = new mgmtApi.ApiClient(this._options);
-
-        let index = 1;
-
-        for (let i = 0; i < contentItems.length; i++) {
-            let contentItem = contentItems[i];
-            index += 1;
-            let containerRef = contentItem.properties.referenceName;
-            try {
-                let container = await this._referenceMapper.getMapping<mgmtApi.Container>('container', 'referenceName', containerRef);
-                let model = await apiClient.modelMethods.getContentModel(container.target.contentDefinitionID, guid);
-            
-                model.fields.flat().find((field) => {
-                    if (field.type === 'Content') {
-                        // Add linked content to reference mapper
-                        this._referenceMapper.addRecord('content', contentItem, null);
-                        return linkedContentItems.push(contentItem);
-                    }
-                });
-            } catch {
-                continue;
-            }
-        }
-        return linkedContentItems;
-    }
-        
-    async getNormalContent(guid: string, baseContentItems: mgmtApi.ContentItem[], linkedContentItems: mgmtApi.ContentItem[]){
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let contentItems = baseContentItems.filter(contentItem => linkedContentItems.indexOf(contentItem) < 0);
-
-        // Add normal content to reference mapper
-        for (const contentItem of contentItems) {
-            this._referenceMapper.addRecord('content', contentItem, null);
-        }
-
-        return contentItems;
-    }
-
-    async pushTemplates(templates: mgmtApi.PageModel[], guid: string, locale: string): Promise<{ createdTemplates: mgmtApi.PageModel[], failedCount: number }> {
-        let apiClient = new mgmtApi.ApiClient(this._options);
-        let createdTemplates: mgmtApi.PageModel[] = [];
-        let failedCount = 0; // Initialize failure counter
-        let index = 1;
-        for(let i = 0; i < templates.length; i++){
-            let template = templates[i];
-            let payload = templates[i];
-            let originalID = template.pageTemplateID;
-            index += 1;
-            try{
-                let existingTemplate = await apiClient.pageMethods.getPageTemplateName(guid, locale, template.pageTemplateName);
-
-                if(existingTemplate){
-                    // template.pageTemplateID = existingTemplate.pageTemplateID;
-                    let existingDefinitions = await apiClient.pageMethods.getPageItemTemplates(guid, locale, existingTemplate.pageTemplateID);
-
-                    if(existingDefinitions){
-                        for(const sourceDef of template.contentSectionDefinitions){
-                            for(const targetDef of existingDefinitions){
-                                if(sourceDef.pageItemTemplateReferenceName !== targetDef.pageItemTemplateReferenceName){
-                                    sourceDef.pageItemTemplateID = -1;
-                                    sourceDef.pageTemplateID = -1;
-                                    sourceDef.contentViewID = 0;
-                                    sourceDef.contentReferenceName = null;
-                                    sourceDef.contentDefinitionID = 0;
-                                    sourceDef.itemContainerID = 0;
-                                    sourceDef.publishContentItemID = 0;
-                                }
-                            }
-                        }
-                    }
-
-                   
-                    this._referenceMapper.addRecord('template', template, existingTemplate);
-                    console.log(`✓ Template ${ansiColors.underline(template.pageTemplateName)} ${ansiColors.bold.gray('exists')} - ${ansiColors.green('Source')}: ${originalID} ${ansiColors.green('Target')}: pageTemplateID:${existingTemplate.pageTemplateID}`);
-                    createdTemplates.push(existingTemplate);
-                    continue;
-                }
-            } catch{
-                template.pageTemplateID = -1;
-                for(let j = 0; j < template.contentSectionDefinitions.length; j++){
-                    template.contentSectionDefinitions[j].pageItemTemplateID = -1;
-                    template.contentSectionDefinitions[j].pageTemplateID = -1;
-                    template.contentSectionDefinitions[j].contentViewID = 0;
-                    template.contentSectionDefinitions[j].contentReferenceName = null;
-                    template.contentSectionDefinitions[j].contentDefinitionID = 0;
-                    template.contentSectionDefinitions[j].itemContainerID = 0;
-                    template.contentSectionDefinitions[j].publishContentItemID = 0;
-                }
-           
-            try{
-                let createdTemplate =  await apiClient.pageMethods.savePageTemplate(guid, locale, template);
-                createdTemplates.push(createdTemplate);
-                this.processedTemplates[createdTemplate.pageTemplateName] = createdTemplate.pageTemplateID;
-                // Add template to reference mapper
-                console.log(`✓ Template created - ${ansiColors.green('Source')}: ${template.pageTemplateName} (ID: ${originalID}), ${ansiColors.green('Target')}: ${createdTemplate.pageTemplateName} (ID: ${createdTemplate.pageTemplateID})`);
-            } catch{
-                console.log(`✗ Failed to create template: ${template.pageTemplateName}`);
-                failedCount++; // Increment failure counter
-            }
-        }
-       }
-
-       return { createdTemplates, failedCount }; // Return object with counts
-    }
-
-    private updateAssetUrls(contentItem: mgmtApi.ContentItem) {
-        const processValue = (value: any): any => {
-            if (Array.isArray(value)) {
-                return value.map(item => processValue(item));
-            } else if (value && typeof value === 'object') {
-                const processed = { ...value };
-                for (const [key, val] of Object.entries(processed)) {
-                    if (key === 'url' && typeof val === 'string') {
-                        const assetRef = this._referenceMapper.getMapping<mgmtApi.Media>('asset', 'originUrl', val);
-                        if (assetRef && assetRef?.target) {
-                            processed[key] = assetRef.target.originUrl;
-                        }
-                    
-                    } else {
-                        processed[key] = processValue(val);
-                    }
-                }
-                return processed;
-            }
-            return value;
-        };
-
-        // Process fields
-        const processedFields: { [key: string]: any } = {};
-        for (const [fieldName, fieldValue] of Object.entries(contentItem.fields)) {
-            processedFields[fieldName] = processValue(fieldValue);
-        }
-
-        return {
-            ...contentItem,
-            fields: processedFields
-        };
-    }
-
-    private isLinkedModel(model: mgmtApi.Model): boolean {
-        return model.fields.some(field => field.type === 'Content');
-    }
-
+   
    
 
     
 
-    private getFilePath(originUrl: string): string {
-        const url = new URL(originUrl);
-        const pathName = url.pathname;
-        const extractedStr = pathName.split("/")[1];
-        return pathName.replace(`/${extractedStr}/`, "");
-    }
+   
+   
+  
 
-    private camelize(str: string): string {
-        return str.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, function(match, index) {
-            if (+match === 0) return ""; // or if (/\s+/.test(match)) for white space
-            return index === 0 ? match.toLowerCase() : match.toUpperCase();
-        });
-    }
-
-    async pushLinkedContentItems(contentItems: mgmtApi.ContentItem[], guid: string) {
-        // REMOVED - Use ContentPusher class now
-    }
-
-    private async processLinkedContentFields(contentItem: mgmtApi.ContentItem, path: string): Promise<void> {
-        // REMOVED - Use ContentPusher class now
-    }
+   
 }

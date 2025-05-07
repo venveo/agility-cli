@@ -1,10 +1,10 @@
 import axios, { AxiosInstance } from "axios";
-import { cliToken } from "./types/cliToken";
+import { cliToken } from "../../types/cliToken";
 import { fileOperations } from "./fileOperations";
-import { serverUser } from "./types/serverUser";
-import { WebsiteUser } from "./types/websiteUser";
-import { forceDevMode, forceLocalMode } from ".";
-import { AgilityInstance } from "./types/instance";
+import { serverUser } from "../../types/serverUser";
+import { WebsiteUser } from "../../types/websiteUser";
+import { forceDevMode, forceLocalMode } from "../..";
+import { AgilityInstance } from "../../types/instance";
 const open = require("open");
 const FormData = require("form-data");
 import fs from 'fs';
@@ -297,9 +297,10 @@ export class Auth {
   }
 
   async getPreviewKey(guid: string, userBaseUrl: string = null) {
+    let baseUrl = this.determineBaseUrl(guid, userBaseUrl);
     let apiPath = `GetPreviewKey?guid=${guid}`;
     try {
-      const response = await this.executeGet(apiPath, guid, userBaseUrl);
+      const response = await this.executeGet(apiPath, guid, baseUrl);
       return response.data as string;
     } catch {
       return null;
@@ -307,9 +308,10 @@ export class Auth {
   }
 
   async getFetchKey(guid: string, userBaseUrl: string = null) {
+    let baseUrl = this.determineBaseUrl(guid, userBaseUrl);
     let apiPath = `GetFetchKey?guid=${guid}`;
     try {
-      const response = await this.executeGet(apiPath, guid, userBaseUrl);
+      const response = await this.executeGet(apiPath, guid, baseUrl);
       return response.data as string;
     } catch {
       return null;

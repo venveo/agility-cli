@@ -2,7 +2,7 @@ import inquirer from "inquirer";
 import colors from "ansi-colors";
 import { instanceSelector } from "../instances/instance-list";
 import { getInstance, instancesPrompt } from "./instance-prompt";
-import { Auth } from "../../auth";
+import { Auth } from "../services/auth";
 import { AgilityInstance } from "types/instance";
 
 export async function homePrompt(prompt?: any) {

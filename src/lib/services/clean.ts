@@ -1,18 +1,11 @@
 import inquirer from "inquirer";
 import * as mgmtApi from "@agility/management-sdk";
-import * as fetchApi from "@agility/content-fetch";
-import * as cliProgress from "cli-progress";
-import { fileOperations } from "./fileOperations";
 import { Auth } from "./auth";
 import { createMultibar } from "./multibar";
-import { asset } from "./asset";
-import { homePrompt } from "./lib/prompts/home-prompt";
+import { assets } from "./assets";
 import ansiColors from "ansi-colors";
-import { assetNew } from "./asset_new";
-import { AgilityInstance } from "./types/instance";
+import { AgilityInstance } from "../../types/instance";
 const fs = require("fs");
-const path = require("path");
-const FormData = require("form-data");
 
 let auth: Auth;
 let options: mgmtApi.Options;
@@ -36,7 +29,6 @@ class Clean {
     options.token = await auth.getToken();
     options.baseUrl = auth.determineBaseUrl(this._guid);
 
-    console.log(options.baseUrl);
     let mgmtApiClient:mgmtApi.ApiClient = new mgmtApi.ApiClient(options);
 
     const multibar = createMultibar({
@@ -62,13 +54,13 @@ class Clean {
             if (pages) {
               const containers = await this.cleanContainers(mgmtApiClient, multibar);
               if (containers) {
-                // const models = await this.cleanModels(mgmtApiClient, multibar);
-                // if (models) {
-                  // const media = await this.cleanMedia(multibar);
-                  // if (media) {
-                  //   return true;
-                  // }
-                // }
+                const models = await this.cleanModels(mgmtApiClient, multibar);
+                if (models) {
+                  const media = await this.cleanMedia(multibar);
+                  if (media) {
+                    return true;
+                  }
+                }
               }
             }
           }
@@ -216,7 +208,7 @@ class Clean {
   }
 
   async cleanMedia(multibar: any) {
-    let assetsSync = new assetNew(options, multibar);
+    let assetsSync = new assets(options, multibar, 'agility-files');
     await assetsSync.deleteAllAssets(this._guid, this._locale, true);
     await assetsSync.deleteAllGalleries(this._guid, this._locale, true);
     return true;

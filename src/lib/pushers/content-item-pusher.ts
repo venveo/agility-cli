@@ -4,7 +4,7 @@ import { findContentInTargetInstance } from "../finders/content-item-finder";
 import { mapContentItem } from "../mappers/content-item-mapper";
 import ansiColors from "ansi-colors";
 
-export class ContentPusher {
+export class pushContentItems {
     private apiClient: mgmtApi.ApiClient;
     private referenceMapper: ReferenceMapper;
     private targetGuid: string;

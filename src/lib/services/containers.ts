@@ -3,13 +3,17 @@ import { fileOperations } from './fileOperations';
 import * as cliProgress from 'cli-progress';
 
 
-export class containerNew{
+export class containers {
     _options : mgmtApi.Options;
     _multibar: cliProgress.MultiBar;
+    _rootPath: string;
+    _legacyFolders: boolean;
 
-    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar){
+    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, rootPath: string, legacyFolders: boolean){
         this._options = options;
         this._multibar = multibar;
+        this._rootPath = rootPath;
+        this._legacyFolders = legacyFolders;
     }
 
     async getContainers(guid: string, locale: string, isPreview: boolean = true){

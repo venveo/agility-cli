@@ -1,5 +1,5 @@
-import { Auth } from "../../auth";
-import { fileOperations } from "../../fileOperations";
+import { Auth } from "../services/auth";
+import { fileOperations } from "../services/fileOperations";
 import { homePrompt } from "../prompts/home-prompt";
 const FormData = require("form-data");
 

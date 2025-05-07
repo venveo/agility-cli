@@ -1,5 +1,5 @@
-import { Auth } from "../../auth";
-import { fileOperations } from "../../fileOperations";
+import { Auth } from "../services/auth";
+import { fileOperations } from "../services/fileOperations";
 import { localePrompt } from "../prompts/locale-prompt";
 import { baseUrlPrompt } from "../prompts/base-url-prompt";
 import { isPreviewPrompt } from "../prompts/isPreview-prompt";

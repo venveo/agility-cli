@@ -1,8 +1,9 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const {sleep} = require("./util")
+const {sleep} = require("../util")
 const { lockSync, unlockSync, checkSync, check }  = require("proper-lockfile")
+
 
 
 require("dotenv").config({

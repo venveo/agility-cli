@@ -4,7 +4,7 @@ import { findContainerInTargetInstance } from "../finders/container-finder";
 import { ContainerMapper } from "../mappers/container-mapper";
 import ansiColors from "ansi-colors";
 
-export class ContainerPusher {
+export class pushContainers {
   private apiClient: mgmtApi.ApiClient;
   private referenceMapper: ReferenceMapper;
   private containerMapper: ContainerMapper;

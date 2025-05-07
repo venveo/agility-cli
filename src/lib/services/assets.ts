@@ -2,15 +2,19 @@ import * as mgmtApi from "@agility/management-sdk";
 import { fileOperations } from "./fileOperations";
 import * as cliProgress from "cli-progress";
 
-export class assetNew {
+export class assets {
   _options: mgmtApi.Options;
   _multibar: cliProgress.MultiBar;
   unProcessedAssets: { [key: number]: string };
+  _rootPath: string;
+  _legacyFolders: boolean;
 
-  constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar) {
+  constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, rootPath?: string, legacyFolders:boolean = false) {
     this._options = options;
     this._multibar = multibar;
     this.unProcessedAssets = {};
+    this._rootPath = rootPath;
+    this._legacyFolders = legacyFolders;
   }
 
   async getGalleries(guid: string, locale: string, isPreview: boolean = true) {

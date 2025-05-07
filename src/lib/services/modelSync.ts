@@ -4,7 +4,7 @@ import * as cliProgress from 'cli-progress';
 import { push } from './push';
 const colors = require('ansi-colors');
 
-export class modelSyncNew{
+export class modelSync{
     _options : mgmtApi.Options;
     _multibar: cliProgress.MultiBar;
 

@@ -1,6 +1,6 @@
 import inquirer from "inquirer";
-import { Auth } from "../../auth";
-import { fileOperations } from "../../fileOperations";
+import { Auth } from "../services/auth";
+import { fileOperations } from "../services/fileOperations";
 
 import colors from "ansi-colors";
 import { homePrompt } from "../prompts/home-prompt";
@@ -11,6 +11,7 @@ export async function instanceSelector() {
   let user = await auth.getUser();  
 
   let instances = user.websiteAccess;
+
   
   const instanceChoices = instances.map((instance: any) => ({
     name: `${instance.displayName} (${instance.guid})`,

@@ -1,17 +1,16 @@
 import inquirer from "inquirer";
 import colors from "ansi-colors";
 import { instanceSelector } from "../instances/instance-list";
-import { Auth } from "../../auth";
-import { createMultibar } from "../../multibar";
+import { Auth } from "../services/auth";
+import { createMultibar } from "../services/multibar";
 import * as mgmtApi from "@agility/management-sdk";
-import { fileOperations } from "../../fileOperations";
+import { fileOperations } from "../services/fileOperations";
 import { localePrompt } from "./locale-prompt";
 import { isPreviewPrompt } from "./isPreview-prompt";
-import { pushNew } from "../../push_new";
 import { AgilityInstance } from "../../types/instance";
 import { blessedUIEnabled } from "../../index";
 import { elementsPrompt } from "./elements-prompt";
-
+import { push } from "../services/push";
 inquirer.registerPrompt("fuzzypath", require("inquirer-fuzzy-path"));
 
 const FormData = require("form-data");
@@ -40,10 +39,13 @@ export async function pushFiles(instance: any) {
     options.token = token;
     options.baseUrl = auth.determineBaseUrl(guid);
 
+    const rootPath = 'agility-files';
+    const legacyFolders = false;
+
     console.log(colors.yellow("Pushing your instance..."));
-    let push = new pushNew(options, multibar, guid, selectedInstance.guid, locale, preview, blessedUIEnabled, elements);
-    await push.initialize();
-    push.pushInstance();
+    let pushOperation = new push(options, multibar, guid, selectedInstance.guid, locale, preview, blessedUIEnabled, elements, rootPath, legacyFolders);
+    await pushOperation.initialize();
+    await pushOperation.pushInstance();
   } else {
     console.log(colors.red("Please pull an instance first to push an instance."));
   }

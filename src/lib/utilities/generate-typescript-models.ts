@@ -1,6 +1,6 @@
 const FormData = require("form-data");
-import { Auth } from "../../auth";
-import { fileOperations } from "../../fileOperations";
+import { Auth } from "../services/auth";
+import { fileOperations } from "../services/fileOperations";
 import { localePrompt } from "../prompts/locale-prompt";
 import * as path from "path";
 import ansiColors = require("ansi-colors");
