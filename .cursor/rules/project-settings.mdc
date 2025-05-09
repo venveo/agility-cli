@@ -34,7 +34,23 @@ We want to update any previous implementations of the file paths, if we can util
 - Always prefer `async generators` for long-running processes (like sync).
 - Token storage must use `keytar`, not file-based systems.
 
+## Architecture
+
+**Initialization**: `src/index.ts` contains all of the CLI commands and vargs.
+**Downaloders**: `src/lib/downloaders` These are responsible for downloading files from the source instances to the local file system using the pull operation, as well as when no source files are found. 
+**Finders**: `src/lib/finders` Finders job is to check for data in the local mappings, or the target instance. 
+**Getters**: `src/lib/getters` Getters retrieve the downloaded file contents for each of the content types.
+**Mappers**: `src/lib/mappers` When content and pages are uploaded to the target instance, we need to map things like the models and containers to the payloads because the ID's on the target instance won't match whats in the source instance. 
+**Pushers**:`src/lib/pushers` These are for pushing content into a target instance. 
+**Prompts**:`src/lib/prompts` These are Inquirer prompts meant to act as part of the orechestration layer.
+**Services**:`src/lib/services` These are the core services to handle different action sets within the CLI. These are largely inhereted from the first version of the CLI. 
+**Utilities**:`src/lib/utlities` These are generators for local filesystem utilities such generating a .env file, sitemap, typescript interfaces and react components.
+
+
+
 ## Planning, Tracking and Execution 
 - Plan, track and execution all phases, tasks and courses of action in `.cursor/manifest.md` before doing any work on the codebase. 
 - Loop through these and update your completion as you go, if we get interupted using the prompt `resume generating` should begin where it last left off.
+
+
 

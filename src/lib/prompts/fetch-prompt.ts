@@ -12,6 +12,7 @@ import { homePrompt } from "./home-prompt";
 import { instancesPrompt } from "./instance-prompt";
 import { AgilityInstance } from "../../types/instance";
 import ansiColors from "ansi-colors";
+import { blessedUIEnabled } from "../../index";
 
 export async function fetchCommandsPrompt(
   selectedInstance: AgilityInstance,
@@ -193,7 +194,7 @@ export async function fetchCommandsPrompt(
       }/fetch/page-${pathAnswer.pagePath.replace(/\//g, "-")}.json`
     );
   } else if (answer.apiMethod === "< Back to Instance") {
-    await instancesPrompt(selectedInstance, keys);
+    await instancesPrompt(selectedInstance, keys, blessedUIEnabled);
   }
 
   // homePrompt();

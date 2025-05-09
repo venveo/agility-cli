@@ -3,6 +3,7 @@ import * as cliProgress from "cli-progress";
 import { fileOperations } from "../services/fileOperations";
 import * as fs from "fs";
 import * as path from "path";
+import ansiColors from "ansi-colors";
 
 export async function downloadAllPages(
   guid: string,
@@ -10,28 +11,29 @@ export async function downloadAllPages(
   isPreview: boolean,
   options: mgmtApi.Options,
   multibar: cliProgress.MultiBar,
-  basePath: string // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  basePath: string, // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
   // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
   // The sync client likely places page references (sitemap) in a folder like 'sitemap' or 'page'.
   // Based on original code, it was 'page' singular: fileOperation.readDirectory(`${guid}/${locale}/${isPreview ? "preview" : "live"}/page`)
   // However, the @agility/content-sync typically uses 'sitemap' for these flat files.
   // Let's assume 'sitemap' is the folder containing page reference JSON files after `runSync()`.
-  const pageReferencesPath = path.join(basePath, "sitemap"); // Or 'page' if confirmed from sync client behavior
-  const pagesDestFolderPath = path.join(basePath, "pages"); // Where full page JSONs are saved
+  const pageReferencesPath = path.join(basePath, "sitemap"); 
+  const pagesDestFolderPath = path.join(basePath, "pages"); 
 
   const fileOps = new fileOperations();
-  let progressBar: cliProgress.SingleBar;
+  // let progressBar: cliProgress.SingleBar; // Old cli-progress bar, remove
 
   // Check if the DESTINATION pages folder exists and is not empty
-  if (fs.existsSync(pagesDestFolderPath)) {
-    const filesInDest = fs.readdirSync(pagesDestFolderPath);
-    if (filesInDest.length > 0) {
-      progressBar = multibar.create(1, 1);
-      progressBar.update(1, { name: "Pages (Skipped - Folder Not Empty)" });
-      return;
-    }
-  }
+  // if (fs.existsSync(pagesDestFolderPath)) {
+  //   const filesInDest = fs.readdirSync(pagesDestFolderPath);
+  //   if (filesInDest.length > 0) {
+  //     console.log(`Pages destination folder at ${pagesDestFolderPath} is not empty. Skipping page download.`);
+  //     if (progressCallback) progressCallback(1, 1, 'success');
+  //     return;
+  //   }
+  // }
 
   // Ensure base directory and pagesDestFolderPath exist before trying to write pages
   if (!fs.existsSync(basePath)) {
@@ -43,59 +45,87 @@ export async function downloadAllPages(
 
   // Check if the page references folder exists (it should, after agilitySync.runSync())
   if (!fs.existsSync(pageReferencesPath) || !fs.lstatSync(pageReferencesPath).isDirectory()) {
-    // console.warn(`Page references folder not found at ${pageReferencesPath}. Skipping page download.`);
-    progressBar = multibar.create(1,1);
-    progressBar.update(1, { name: "Pages (Skipped - Refs Not Found)" });
+    console.log(`Page references folder (sitemap) not found at ${pageReferencesPath}. Skipping page download.`);
+    if (progressCallback) progressCallback(0, 0, 'success'); // No pages to process
     return;
   }
 
-  const pageReferenceFiles = fs.readdirSync(pageReferencesPath).filter(f => f.endsWith(".json"));
+  // The itemID for sitemaps (flat and nested) is typically the channel reference name, e.g., "website".
+  const sitemapItemID = "website"; // Assuming this is the standard itemID for the channel's sitemap.
+  const flatSitemapFilePath = path.join(pageReferencesPath, `${sitemapItemID}.json`);
 
-  if (pageReferenceFiles.length === 0) {
-    progressBar = multibar.create(1, 1);
-    progressBar.update(1, { name: "Pages (No page references found)" });
+  if (!fs.existsSync(flatSitemapFilePath)) {
+    console.warn(ansiColors.yellow(`Flat sitemap file not found at ${flatSitemapFilePath}. Skipping page download.`));
+    if (progressCallback) progressCallback(0, 0, 'success'); // No pages to process
+    return;
+  }
+  
+  let sitemapEntriesToProcess: [string, mgmtApi.PageItem][] = [];
+  let sitemapObject: any = null; // To store the parsed sitemap
+
+  try {
+    const fileContent = fs.readFileSync(flatSitemapFilePath, "utf-8");
+    sitemapObject = JSON.parse(fileContent);
+    if (sitemapObject && typeof sitemapObject === 'object') {
+        sitemapEntriesToProcess = Object.entries(sitemapObject)
+            .filter(([pathKey, pageData]: [string, any]) => pageData && typeof pageData.pageID === 'number')
+            .map(([pathKey, pageData]): [string, mgmtApi.PageItem] => [pathKey, pageData as mgmtApi.PageItem]);
+    } else {
+        throw new Error(`Sitemap content in ${flatSitemapFilePath} is not a valid object.`);
+    }
+  } catch (parseError: any) {
+    console.error(ansiColors.red(`Error parsing sitemap file ${flatSitemapFilePath}: ${parseError.message}`));
+    if (progressCallback) progressCallback(0, 0, 'error');
+    return;
+  }
+
+  const totalPages = sitemapEntriesToProcess.length;
+
+  if (totalPages === 0) {
+    console.log("No page items with pageID found in sitemap to download.");
+    if (progressCallback) progressCallback(0, 0, 'success');
     return;
   }
 
   let apiClient = new mgmtApi.ApiClient(options);
-  progressBar = multibar.create(pageReferenceFiles.length, 0);
-  progressBar.update(0, { name: "Downloading Pages" });
-  let SucceededCount = 0;
-  let ErrorCount = 0;
+  if (progressCallback) progressCallback(0, totalPages, 'progress');
+  let processedCount = 0;
+  let successCount = 0;
+  let errorCount = 0;
 
   try {
-    for (let i = 0; i < pageReferenceFiles.length; i++) {
-      const filePath = path.join(pageReferencesPath, pageReferenceFiles[i]);
+    for (let i = 0; i < sitemapEntriesToProcess.length; i++) {
+      const [pagePath, pageItem] = sitemapEntriesToProcess[i]; // pageItem is an actual PageItem, pagePath is its key
+
       try {
-        const fileContent = fs.readFileSync(filePath, "utf-8");
-        // Assuming the reference file itself contains enough info like { pageID: number }
-        // Or, if the filename is the pageID (e.g., {pageID}.json)
-        // The original code did: let pageItem = JSON.parse(files[i]) as mgmtApi.PageItem;
-        // This implied files[i] was the content, not the name. So we use fileContent.
-        const pageItem = JSON.parse(fileContent) as mgmtApi.PageItem; // Must have pageID
-
-        if (!pageItem.pageID) {
-            // console.warn(`Skipping page reference ${pageReferenceFiles[i]} as it does not contain a pageID.`);
-            ErrorCount++;
-            progressBar.increment(1);
-            continue;
+        if (!pageItem.pageID) { // Should be filtered out already, but as a safeguard
+            console.warn(ansiColors.yellow(`~ Skipping sitemap entry for path ${pagePath}: missing pageID.`));
+        } else {
+            const page = await apiClient.pageMethods.getPage(pageItem.pageID, guid, locale);
+            fileOps.exportFiles("pages", String(page.pageID), page, basePath); 
+            console.log(`✓ Downloaded page by path ${ansiColors.cyan(pagePath)}, ID: ${page.pageID}`);
+            successCount++;
         }
-
-        const page = await apiClient.pageMethods.getPage(pageItem.pageID, guid, locale);
-        // Original code: fileOperation.exportFiles(`${guid}/${locale}/${isPreview ? "preview" : "live"}/pages`, page.pageID, page)
-        // The first arg to exportFiles was the FOLDER name for that content type WITHIN the base path.
-        // So, it should be 'pages', then pageID, then page object, then the overall basePath for the instance.
-        fileOps.exportFiles("pages", page.pageID, page, basePath);
-        SucceededCount++;
-      } catch (itemError) {
-        // console.error(`Error processing page reference ${pageReferenceFiles[i]}:`, itemError);
-        ErrorCount++;
+      } catch (itemError: any) {
+        console.error(ansiColors.red(`✗ Error processing page (ID ${pageItem.pageID}, Path ${pagePath}): ${itemError.message}`));
+        errorCount++;
       }
-      progressBar.increment(1, {name: `Downloading Pages` });
+      processedCount++; 
+      if (progressCallback) progressCallback(processedCount, totalPages, 'progress');
     }
-    if(progressBar) progressBar.stop();
-  } catch (error) {
-    if(progressBar) progressBar.stop();
-    console.error("\nError downloading pages:", error);
+    
+    let summaryMessage = `Downloaded ${processedCount}/${totalPages} pages. Errors: ${errorCount}.`;
+    if (errorCount > 0) {
+        console.log(ansiColors.yellow(summaryMessage));
+    } else {
+        console.log(ansiColors.yellow(summaryMessage));
+    }
+
+    if (progressCallback) progressCallback(processedCount, totalPages, errorCount === 0 && processedCount === totalPages ? 'success' : 'error');
+
+  } catch (error: any) {
+    console.error(ansiColors.red("\nFatal error during page download process:"), error.message);
+    if (progressCallback) progressCallback(processedCount, totalPages, 'error');
+    throw error;
   }
 } 

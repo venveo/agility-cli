@@ -28,8 +28,8 @@ export class content {
     const contentItemArr = selectedContentItems.split(",");
 
     if (contentItemArr && contentItemArr.length > 0) {
-      const validBar1 = this._multibar.create(contentItemArr.length, 0);
-      validBar1.update(0, { name: "Updating items" });
+      // const validBar1 = this._multibar.create(contentItemArr.length, 0);
+      // validBar1.update(0, { name: "Updating items" });
 
       let index = 1;
       const successfulItems = [];
@@ -135,7 +135,7 @@ export class content {
           continue;
         }
 
-        validBar1.update(index);
+        // validBar1.update(index);
       }
 
       return {

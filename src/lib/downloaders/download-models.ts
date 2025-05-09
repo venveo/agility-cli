@@ -10,40 +10,38 @@ export async function downloadAllModels(
   isPreview: boolean, 
   options: mgmtApi.Options,
   multibar: cliProgress.MultiBar,
-  basePath: string // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  basePath: string, // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
   // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
   const modelsFolderPath = path.join(basePath, "models");
-  let progressBar: cliProgress.SingleBar;
+  // let progressBar: cliProgress.SingleBar; // Old cli-progress bar, remove
 
   // Check if the main models folder exists and is not empty
-  if (fs.existsSync(modelsFolderPath)) {
-    const filesOrDirs = fs.readdirSync(modelsFolderPath);
-    if (filesOrDirs.length > 0) {
-      progressBar = multibar.create(1, 1);
-      progressBar.update(1, { name: "Models (Skipped - Folder Not Empty)" });
-      return;
-    }
-  }
+  // if (fs.existsSync(modelsFolderPath)) {
+  //   const filesOrDirs = fs.readdirSync(modelsFolderPath);
+  //   if (filesOrDirs.length > 0) {
+  //     console.log(`Models folder at ${modelsFolderPath} is not empty. Skipping download.`);
+  //     if (progressCallback) progressCallback(1, 1, 'success');
+  //     return;
+  //   }
+  // }
 
   if (!fs.existsSync(modelsFolderPath)) {
     fs.mkdirSync(modelsFolderPath, { recursive: true });
   }
 
-  // Instantiate the models service.
-  // The service's getModels method takes guid, locale, isPreview, and a baseFolder (our basePath) for saving files.
-  const modelsServiceInstance = new ModelsService(options, multibar, basePath, false);
+  // Instantiate the models service, passing the progressCallback.
+  const modelsServiceInstance = new ModelsService(options, multibar, basePath, false, progressCallback);
 
   try {
-    // This method from ModelsService should handle its own progress bar
-    // and save files to agility-files/{guid}/{locale}/{mode}/models/
-    // console.log(`Downloading models into: ${modelsFolderPath}`);
+    // console.log("Starting download of all content and page models...");
+    // Initial progress can be set here if desired, but getModels will also call it.
     await modelsServiceInstance.getModels(guid, locale, isPreview, basePath);
+    // Final success/error callback is handled by modelsServiceInstance.getModels
   } catch (error) {
-    console.error(`\nError during model download process for ${guid}/${locale}:`, error);
-    // Add a failed progress bar item if not handled by the service method
-    // progressBar = multibar.create(1, 0);
-    // progressBar.update(0, { name: `Models (Failed)` });
-    // progressBar.stop();
+    // Error-specific callback is handled by modelsServiceInstance.getModels.
+    // Re-throw to allow pull.ts to manage its step status.
+    throw error;
   }
 } 

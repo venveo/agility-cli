@@ -1,3 +1,5 @@
+import ansiColors from "ansi-colors"
+
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -27,6 +29,10 @@ const saveItem = async ({ options, item, itemType, languageCode, itemID }) => {
 	const absoluteFilePath = path.resolve(cwd, filePath);
 	let dirPath = path.dirname(absoluteFilePath);
 
+	console.log(dirPath);
+	console.log(itemType);
+	console.log(itemID);
+
 	try {
 		if (!fs.existsSync(dirPath)) {
 			fs.mkdirSync(dirPath, { recursive: true });
@@ -37,11 +43,25 @@ const saveItem = async ({ options, item, itemType, languageCode, itemID }) => {
 		}
 
 		let json = JSON.stringify(item);
+
+
 		fs.writeFileSync(absoluteFilePath, json);
 		
 		if (!fs.existsSync(absoluteFilePath)) {
 			throw new Error(`File was not created: ${absoluteFilePath}`);
 		}
+        // Log the successful save operation
+        // This log 
+		// console.log(JSON.stringify(item, null, 2));
+		console.log(itemType)
+		//iwill be captured by Blessed UI if console.log is redirected
+        if(itemType === 'item'){
+			console.log(`✓ Downloaded content item ${ansiColors.cyan(item?.properties?.referenceName)} (ID: ${itemID})`);
+		}
+		// if(itemType === 'page'){
+		// 	console.log(`✓ Downloaded page ${ansiColors.cyan(item.title)} (ID: ${itemID})`);
+		// }
+		
 	} catch (error) {
 		console.error('Error in saveItem:', error);
 		console.error('Error details:', {

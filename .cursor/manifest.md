@@ -88,3 +88,68 @@
 - [ ] **Task 5.2:** Ensure all file paths use the `agility-files/{guid}/{locale}/${isPreview ? 'preview':'live'}` structure consistently (or user-defined main directory name).
 - [ ] **Task 5.3:** Verify strong typing, no `any` types in new interfaces (especially in new code), and `keytar` usage for tokens (via Auth service).
 - [ ] **Task 5.4:** Review and ensure all `cliProgress` multibar instances are correctly passed and utilized by downloaders and services. Ensure the top-level `multibar` instance created by prompts/commands is stopped after the entire pull operation completes.
+
+# Pull Command UI and Progress Callback Implementation
+
+## Phase 1: Blessed UI Setup for Pull Command (Completed)
+
+- [x] Import `blessed` and `blessed-contrib` in `src/lib/services/pull.ts`.
+- [x] Add `_useBlessedUI` parameter to `Pull` class constructor.
+- [x] Initialize Blessed screen, grid, header, progress container, and log container in `pullInstance`.
+- [x] Redirect `console.log` and `console.error` to the Blessed log container.
+- [x] Implement `restoreConsole` and screen cleanup.
+- [x] Add progress bars shell in `progressContainerBox` based on selected elements.
+- [x] Implement `updateProgress` function in `pull.ts` to manage progress bar state (percentage, color, label).
+
+## Phase 2: Integrate Progress Callbacks
+
+- [x] Define `ProgressCallbackType` in `src/lib/services/pull.ts`.
+- [x] For each `downloadAll...` function call in `pull.ts`:
+    - [x] Create a specific `progressCallback` instance.
+    - [x] Wrap the `downloadAll...` call in a `try/catch` block for granular error reporting to the UI.
+    - [x] Pass the `progressCallback` as the new last argument to the `downloadAll...` function.
+- **Update Downloader Signatures and Implement Callback Logic**:
+    - For each downloader file in `src/lib/downloaders/`:
+        - `download-all-templates.ts`
+            - [x] Modify function signature to accept `progressCallback?: ProgressCallbackType`.
+            - [x] Call `progressCallback` incrementally after each template is processed.
+            - [x] Log start, each item processed, and completion/error.
+            - [x] Call `progressCallback` with `(total, total, 'success')` on successful completion or `(processedAtError, total, 'error')` on error.
+        - `download-all-pages.ts`
+            - [x] Modify function signature to accept `progressCallback?: ProgressCallbackType`.
+            - [x] Call `progressCallback` incrementally after each page reference is processed.
+            - [x] Log start, each item processed, and completion/error.
+            - [x] Call `progressCallback` with `(total, total, 'success')` on successful completion or `(processedAtError, total, 'error')` on error.
+        - `download-all-galleries.ts`
+            - [x] Modify function signature to accept `progressCallback?: ProgressCallbackType`.
+            - [x] Call `progressCallback` at start (0%) and end (100% or error) of `AssetsService.getGalleries()` call.
+            - [x] Log start and completion/error of the overall gallery download operation.
+            - [ ] *Further item-by-item progress/logging requires `AssetsService.getGalleries` refactor.*
+        - `download-all-assets.ts`
+            - [x] Modify function signature to accept `progressCallback?: ProgressCallbackType`.
+            - [x] Call `progressCallback` at start (0%) and end (100% or error) of `AssetsService.getAssets()` call.
+            - [x] Log start and completion/error of the overall asset download operation.
+            - [ ] *Further item-by-item progress/logging requires `AssetsService.getAssets` refactor.*
+        - `download-all-containers.ts`
+            - [x] Modify function signature to accept `progressCallback?: ProgressCallbackType`.
+            - [x] Call `progressCallback` at start (0%) and end (100% or error) of `ContainersService.getContainers()` call.
+            - [x] Log start and completion/error of the overall container download operation.
+            - [ ] *Further item-by-item progress/logging requires `ContainersService.getContainers` refactor.*
+        - `download-all-content.ts`
+            - [x] Modify function signature to accept `progressCallback?: ProgressCallbackType`.
+            - [x] Call `progressCallback` to indicate completion (this step checks for existing content, doesn't loop items).
+            - [x] Log the outcome of the content check.
+        - `download-all-models.ts`
+            - [x] Modify function signature to accept `progressCallback?: ProgressCallbackType`.
+            - [x] Call `progressCallback` at start (0%) and end (100% or error) of `ModelsService.getModels()` call.
+            - [x] Log start and completion/error of the overall model download operation.
+            - [ ] *Further item-by-item progress/logging requires `ModelsService.getModels` refactor.*
+- [x] Verify linter errors in `pull.ts` are resolved.
+- [x] Test pull functionality with the Blessed UI and ensure progress bars update correctly.
+- [x] Ensure Blessed UI remains open after completion until manually closed (Ctrl+C).
+
+## Phase 3: Refinements (Future)
+- [ ] Consider replacing `cli-progress` (`this._multibar`) entirely with Blessed UI logging.
+- [ ] Implement item-by-item progress and logging in service methods (Assets, Containers, Models services) if desired.
+- [ ] More granular error reporting within downloaders and services.
+- [ ] UI styling improvements.

@@ -10,7 +10,8 @@ export async function downloadAllContent(
   isPreview: boolean,
   options: mgmtApi.Options, // Kept for API consistency, though not directly used here yet
   multibar: cliProgress.MultiBar,
-  basePath: string // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  basePath: string, // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
   // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
   // Content items are assumed to be downloaded by the main agilitySync.runSync() call
@@ -21,32 +22,31 @@ export async function downloadAllContent(
 
   // Heuristic: Check for a common top-level folder like 'content' or 'items'.
   // This might need adjustment based on how `storeInterfaceFileSystem` organizes content.
-  const commonContentPath1 = path.join(basePath, "content");
-  const commonContentPath2 = path.join(basePath, "items"); // Another common name
+//   const commonContentPath1 = path.join(basePath, "content");
+  const commonContentPath1 = path.join(basePath, "item"); // Another common name
   
-  let progressBar: cliProgress.SingleBar;
   let contentFound = false;
 
+//   console.log("Checking for existing synchronized content items...");
   if (fs.existsSync(commonContentPath1) && fs.readdirSync(commonContentPath1).length > 0) {
+    console.log(`Content found in ${commonContentPath1}.`);
     contentFound = true;
   }
-  if (!contentFound && fs.existsSync(commonContentPath2) && fs.readdirSync(commonContentPath2).length > 0) {
-    contentFound = true;
-  }
+//   if (!contentFound && fs.existsSync(commonContentPath2) && fs.readdirSync(commonContentPath2).length > 0) {
+//     console.log(`Content found in ${commonContentPath2}.`);
+//     contentFound = true;
+//   }
 
   // A more robust check would be to scan `basePath` for multiple potential content definition folders,
   // but that's more involved. For now, this heuristic is a starting point.
 
   if (contentFound) {
-    progressBar = multibar.create(1, 1);
-    progressBar.update(1, { name: "Content (Skipped - Folders Populated)" });
+    console.log("Content items already synchronized. Skipping explicit content download step.");
+    if (progressCallback) progressCallback(1, 1, 'success'); 
     return;
   } else {
-    // This means the main sync might not have downloaded content items as expected, or they are organized differently.
-    // No specific download action is taken here; it relies on the preceding base sync.
-    progressBar = multibar.create(1, 1); // Show it as 'done' but with a note.
-    progressBar.update(1, { name: "Content" });
-    // console.warn(`Content folders (${commonContentPath1} or ${commonContentPath2}) are empty or not found after base sync. This might be okay if content is organized differently, or an issue with the sync process.`);
+    console.log(`No pre-existing content items found in common locations (${commonContentPath1}).`);
+    if (progressCallback) progressCallback(1, 1, 'success'); 
     return;
   }
   // If in the future, specific API calls are needed to augment what syncSDK does for content items,

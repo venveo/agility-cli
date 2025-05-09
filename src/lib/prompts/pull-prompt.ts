@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import { Pull } from "../services/pull";
 import * as path from 'path';
+import rootPathPrompt from "./root-path-prompt";
 
 inquirer.registerPrompt('fuzzypath', require('inquirer-fuzzy-path'))
 
@@ -24,35 +25,39 @@ let auth: Auth;
 let options: mgmtApi.Options;
 
 
-export async function pullFiles(selectedInstance: AgilityInstance) {
+export async function pullFiles(selectedInstance: AgilityInstance, useBlessedUI: boolean) {
     const { guid } = selectedInstance;
     const baseUrl = await getBaseURLfromGUID(guid);
     const locale = await localePrompt(selectedInstance);
     const channel = await channelPrompt();
     const preview = await isPreviewPrompt();
+    const rootPath = await rootPathPrompt();
     const elements:any = await elementsPrompt();
 
-    return await downloadFiles(guid, locale, channel, baseUrl, preview, elements);
+    return await downloadFiles(guid, locale, channel, baseUrl, preview, elements, rootPath, useBlessedUI);
 }
 
 
-async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any, elements: any) {
+async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any, elements: any, rootPath: string, useBlessedUI: boolean) {
     auth = new Auth();
     let userBaseUrl: string = baseUrl as string;
-    let multibar = createMultibar({name: 'Pull'});
+    
+    let multibar = null; // createMultibar({name: 'Pull'});
 
     options = new mgmtApi.Options();
     options.token = await auth.getToken();
-    options.baseUrl = auth.determineBaseUrl(guid);
+    // options.baseUrl = auth.determineBaseUrl(guid); // Pull service might determine this based on flags/env
 
     let user = await auth.getUser(guid);
 
-    const instanceFilesParentPath = '.';
-    const fullPath = path.join(instanceFilesParentPath, `agility-files/${guid}/${locale}/${isPreview ? 'preview' : 'live'}`);
+    const instanceFilesParentPath = '.'; // Relative to CWD
+    const fullPath = path.join(instanceFilesParentPath, rootPath, guid, locale, isPreview ? 'preview':'live');
         
     try {
-        if (!fs.existsSync(path.join(instanceFilesParentPath, 'agility-files'))) {
-            await fsPromises.mkdir(path.join(instanceFilesParentPath, 'agility-files'));
+        const rootDir = path.join(instanceFilesParentPath, rootPath);
+        if (!fs.existsSync(rootDir)) {
+            await fsPromises.mkdir(rootDir);
+            console.log(`Created directory: ${rootDir}`);
         }
         await fsPromises.mkdir(fullPath, { recursive: true });
             
@@ -62,13 +67,14 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
     }
         
     if(user){
-        const base = auth.determineBaseUrl(guid);
-        let previewKey = await auth.getPreviewKey(guid, userBaseUrl ? userBaseUrl : base);
-        let fetchKey = await auth.getFetchKey(guid, userBaseUrl ? userBaseUrl : base)
+        const apiBaseUrl = userBaseUrl || auth.determineBaseUrl(guid);
+        let previewKey = await auth.getPreviewKey(guid, apiBaseUrl);
+        let fetchKey = await auth.getFetchKey(guid, apiBaseUrl);
         let apiKeyForPull = isPreview ? previewKey : fetchKey;
 
         if(apiKeyForPull){
-            console.log(colors.yellow(`\nDownloading your instance to ${process.cwd()}/${fullPath}`));
+            // Message handled by Pull service now based on mode
+            // console.log(colors.yellow(`\nDownloading your instance to ${process.cwd()}/${fullPath}`));
 
             const pullOperation = new Pull(
                 guid,
@@ -77,17 +83,22 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                 channel,
                 isPreview,
                 options,
-                multibar,
+                multibar, // Pass null, Pull service uses flags
                 elements,
-                "agility-files"
+                rootPath, // Pass the root path name itself (e.g., agility-files)
+                false, // Assuming legacyFolders is false unless specified elsewhere
+                useBlessedUI, // Pass the flag determining blessed UI use
+                false, // Assuming headless is false unless specified (comes from index.ts)
+                false // Assuming verbose is false unless specified (comes from index.ts)
+                // If pullFiles needs to respect headless/verbose, those flags need to be passed down too.
             );
 
             try {
                 await pullOperation.pullInstance();
-                console.log(colors.green('\n✅ Download complete!\n'));
                 return true;
             } catch (pullError) {
-                console.error(colors.red('\n❌ Download failed during pull operation:'), pullError);
+                // Pull service now logs errors based on mode
+                // console.error(colors.red('\n❌ Download failed during pull operation:'), pullError);
                 return false;
             }
 

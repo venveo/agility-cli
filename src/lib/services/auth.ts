@@ -3,7 +3,7 @@ import { cliToken } from "../../types/cliToken";
 import { fileOperations } from "./fileOperations";
 import { serverUser } from "../../types/serverUser";
 import { WebsiteUser } from "../../types/websiteUser";
-import { forceDevMode, forceLocalMode } from "../..";
+import { forceDevMode, forceLocalMode, forceNGROK } from "../..";
 import { AgilityInstance } from "../../types/instance";
 const open = require("open");
 const FormData = require("form-data");
@@ -101,6 +101,8 @@ export class Auth {
     if (forceDevMode) {
       return "https://mgmt-dev.aglty.io";
     }
+
+
     if (guid?.endsWith("d")) {
       return "https://mgmt-dev.aglty.io";
     } else if (guid?.endsWith("u")) {
@@ -178,6 +180,7 @@ export class Auth {
     if (forceLocalMode) {
       url = localDevUrl;
     }
+
 
     await open(url);
     return code;

@@ -5,7 +5,8 @@ import { getInstance, instancesPrompt } from "./instance-prompt";
 import { Auth } from "../services/auth";
 import { AgilityInstance } from "types/instance";
 
-export async function homePrompt(prompt?: any) {
+export async function homePrompt(useBlessedUI: boolean, prompt?: any) {
+    console.log("[Debug] homePrompt function started.");
     await inquirer
     .prompt([
       {
@@ -30,7 +31,7 @@ export async function homePrompt(prompt?: any) {
                 ...keys
             }
             delete keyClone['websiteDetails']
-            await instancesPrompt(selectedInstance, keys);
+            await instancesPrompt(selectedInstance, keys, useBlessedUI);
             break;
 
         case "Logout":

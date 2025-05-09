@@ -15,7 +15,7 @@ const FormData = require("form-data");
 
 inquirer.registerPrompt("search-list", require("inquirer-search-list"));
 
-export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
+export async function instancesPrompt(selectedInstance: AgilityInstance, keys: any, useBlessedUI: boolean) {
 
   const auth = new Auth();
   // const { jobRole} = await auth.getUser(selectedInstance.guid);
@@ -57,18 +57,16 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
 
   switch (answers.instanceAction) {
     case "pull":
-      const pullResult = await pullFiles(selectedInstance);
-      if (pullResult) {
-        homePrompt();
-      }
+      await pullFiles(selectedInstance, useBlessedUI);
+      // if (pullResult) {
+      //   homePrompt();
+      // }
       break;
     case "push":
-      pushFiles(selectedInstance);
+      await pushFiles(selectedInstance, useBlessedUI);
       break;
     case "syncModels":
-
-
-    console.log('not sure what to do here yet')
+      console.log('Sync models needs implementation.');
       // const syncModels = await syncModelsPrompt(selectedInstance);
       // if (syncModels) {
         // homePrompt();
@@ -78,19 +76,19 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
     case "fetch":
       const fetch = await fetchAPIPrompt(selectedInstance, keys);
       if (fetch) {
-        homePrompt();
+        homePrompt(useBlessedUI);
       }
       break;
     case "env":
       const generatedEnv = await generateEnv(keys);
       if (generatedEnv) {
-        homePrompt();
+        homePrompt(useBlessedUI);
       }
       break;
     case "sitemap":
       const generatedSitemap = await generateSitemap(selectedInstance, keys);
       if (generatedSitemap) {
-        homePrompt();
+        homePrompt(useBlessedUI);
       }
       break;
     case "types":
@@ -99,7 +97,7 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
     case "reactcomponents":
       const generatedComponents = await generateReactComponents(selectedInstance);
       if (generatedComponents) {
-        homePrompt();
+        homePrompt(useBlessedUI);
       }
       break;
     case "clean":
@@ -107,11 +105,11 @@ export async function instancesPrompt(selectedInstance: AgilityInstance, keys) {
       const clean = new Clean(selectedInstance, locale);
       const cleaned = await clean.cleanAll();
       if (cleaned) {
-        homePrompt();
+        homePrompt(useBlessedUI);
       }
       break;
     case "home":
-      homePrompt();
+      homePrompt(useBlessedUI);
       break;
     default:
       console.log("Invalid action selected.");

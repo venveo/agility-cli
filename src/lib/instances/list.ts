@@ -1,6 +1,7 @@
 import { Auth } from "../services/auth";
 import { fileOperations } from "../services/fileOperations";
 import { homePrompt } from "../prompts/home-prompt";
+import { blessedUIEnabled } from "../../index";
 const FormData = require("form-data");
 
 export async function listInstances() {
@@ -9,5 +10,5 @@ export async function listInstances() {
   let instances = user.websiteAccess;
 
   console.log(instances);
-  homePrompt("Any other actions you would like to take?");
+  homePrompt(blessedUIEnabled, "Any other actions you would like to take?");
 }

@@ -60,7 +60,7 @@ export default async function generateTypes(selectedInstance: AgilityInstance) {
       code.createFile(modelsFilePath, cleanedResult);
       console.log(ansiColors.green("🚀 TypeScript models generated successfully!"));
       console.log(`\nResponse written to ${modelsFilePath}`);
-      homePrompt();
+      homePrompt(true);
     });
 
     await new Promise((resolve) => reader.on("end", resolve));
@@ -68,7 +68,7 @@ export default async function generateTypes(selectedInstance: AgilityInstance) {
     const timestamp = new Date().toISOString();
     code.appendLogFile(`${timestamp} Error generating TypeScript interfaces: ${error} - ${AI_ENDPOINT}\n`);
     console.log(ansiColors.red(`Error occurred while generating TypeScript interfaces.`));
-    homePrompt();
+    homePrompt(true);
   
   }
 

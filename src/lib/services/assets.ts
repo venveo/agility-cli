@@ -1,6 +1,8 @@
 import * as mgmtApi from "@agility/management-sdk";
 import { fileOperations } from "./fileOperations";
 import * as cliProgress from "cli-progress";
+import ansiColors from "ansi-colors";
+import path from "path";
 
 export class assets {
   _options: mgmtApi.Options;
@@ -8,13 +10,21 @@ export class assets {
   unProcessedAssets: { [key: number]: string };
   _rootPath: string;
   _legacyFolders: boolean;
+  private _progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void;
 
-  constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, rootPath?: string, legacyFolders:boolean = false) {
+  constructor(
+    options: mgmtApi.Options,
+    multibar: cliProgress.MultiBar,
+    rootPath?: string,
+    legacyFolders:boolean = false,
+    progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
+    ) {
     this._options = options;
     this._multibar = multibar;
     this.unProcessedAssets = {};
     this._rootPath = rootPath;
     this._legacyFolders = legacyFolders;
+    this._progressCallback = progressCallback;
   }
 
   async getGalleries(guid: string, locale: string, isPreview: boolean = true) {
@@ -56,18 +66,18 @@ export class assets {
       iterations = 1;
     }
 
-    const progressBar1 = this._multibar.create(iterations, 0);
+    // const progressBar1 = this._multibar.create(iterations, 0);
 
     if (multiExport) {
-      progressBar1.update(0, { name: "Galleries" });
+      // progressBar1.update(0, { name: "Galleries" });
 
       for (let i = 0; i < iterations; i++) {
         rowIndex += pageSize;
-        if (index === 1) {
-          progressBar1.update(1);
-        } else {
-          progressBar1.update(index);
-        }
+        // if (index === 1) {
+        //   progressBar1.update(1);
+        // } else {
+        //   progressBar1.update(index);
+        // }
         index += 1;
         let galleries = await apiClient.assetMethods.getGalleries(
           guid,
@@ -85,7 +95,7 @@ export class assets {
         );
       }
     } else {
-      progressBar1.update(1, { name: "Galleries" });
+      // progressBar1.update(1, { name: "Galleries" });
     }
 
     // progressBar1.stop();
@@ -108,150 +118,138 @@ export class assets {
     let recordOffset = 0;
     let index = 1;
     let multiExport = false;
+    let processedAssetsInLoop = 0;
+    let totalSuccessfullyDownloaded = 0;
+    let totalAttemptedToProcess = 0;
+    let totalRecords = 0;
 
-    let initialRecords = await apiClient.assetMethods.getMediaList(
-      pageSize,
-      recordOffset,
-      guid
-    );
+    try {
+      let initialRecords = await apiClient.assetMethods.getMediaList(
+        pageSize,
+        recordOffset,
+        guid
+      );
 
-    let totalRecords = initialRecords.totalCount;
-    
-    // Create the base directory structure
-    const basePath = `${guid}/${locale}/${isPreview ? "preview" : "live"}`;
-    
-    // Create the deepest directory we need - this will create all parent directories
-    fileExport.createFolder(`${basePath}/assets/galleries`);
-    
-    fileExport.exportFiles(
-      `${basePath}/assets/json`,
-      index,
-      initialRecords
-    );
+      totalRecords = initialRecords.totalCount;
+      if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, 'progress');
 
-    let iterations = Math.round(totalRecords / pageSize);
+      const basePath = this._legacyFolders ? this._rootPath : path.join(this._rootPath, guid, locale, isPreview ? "preview" : "live");
+      const assetsJsonPath = this._legacyFolders ? path.join(basePath, 'assets', 'json') : path.join(basePath, "assets", "json");
+      const assetsContentPath = this._legacyFolders ? path.join(basePath, 'assets') : path.join(basePath, "assets");
 
-    if (totalRecords > pageSize) {
-      multiExport = true;
-    }
+      fileExport.createFolder(assetsJsonPath);
 
-    if (iterations === 0) {
-      iterations = 1;
-    }
+      fileExport.exportFiles(
+        assetsJsonPath,
+        index,
+        initialRecords
+      );
+      index++;
 
-    const progressBar2 = this._multibar.create(totalRecords, 0);
+      let iterations = Math.ceil(totalRecords / pageSize);
+      if (iterations === 0 && totalRecords > 0) iterations = 1;
+      else if (totalRecords === 0) iterations = 0;
 
-    progressBar2.update(0, { name: "Assets" });
-
-    for (let i = 0; i < initialRecords.assetMedias.length; i++) {
-      const originUrl = initialRecords.assetMedias[i].originUrl;
-      const assetMediaID = initialRecords.assetMedias[i].mediaID;
-      const filePath = this.getFilePath(originUrl);
-      const folderPath = filePath.split("/").slice(0, -1).join("/");
-      const fileName = `${initialRecords.assetMedias[i].fileName}`;
-
-      if (this.isUrlProperlyEncoded(originUrl)) {
-        this.unProcessedAssets[assetMediaID] = fileName;
-        progressBar2.update(i + 1);
-        continue;
+      if (totalRecords > pageSize) {
+        multiExport = true;
       }
+      
+      for (let i = 0; i < initialRecords.assetMedias.length; i++) {
+        totalAttemptedToProcess++;
+        const assetMedia = initialRecords.assetMedias[i];
+        const originUrl = assetMedia.originUrl;
+        const assetMediaID = assetMedia.mediaID;
+        const filePath = this.getFilePath(originUrl);
+        const folderPath = filePath.split("/").slice(0, -1).join("/");
+        const fileName = `${assetMedia.fileName}`;
+        const assetDownloadPath = this._legacyFolders ? basePath : assetsContentPath;
 
-      if (folderPath) {
-        const fullFolderPath = `${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/${folderPath}`;
-        fileExport.createFolder(fullFolderPath);
+        if (this.isUrlProperlyEncoded(originUrl)) {
+          this.unProcessedAssets[assetMediaID] = fileName;
+          if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, 'progress');
+          continue;
+        }
+
+        const destinationFolderPath = folderPath ? path.join(assetDownloadPath, folderPath) : assetDownloadPath;
+        if (folderPath) {
+          fileExport.createFolder(destinationFolderPath);
+        }
+        
         try {
           await fileExport.downloadFile(
             originUrl,
-            `agility-files/${fullFolderPath}/${fileName}`
+            path.join(destinationFolderPath, fileName)
           );
-        } catch {
-          console.log('Failed to download file', originUrl);
+          console.log('✓ Downloaded file', ansiColors.underline(fileName || originUrl.split('/').pop()));
+          totalSuccessfullyDownloaded++;
+        } catch (downloadError: any) {
+          console.error('✗ Failed to download file', ansiColors.red(fileName || originUrl.split('/').pop()), ansiColors.gray(downloadError.message ? `- ${downloadError.message}` : ''));
           this.unProcessedAssets[assetMediaID] = fileName;
         }
-      } else {
-        try {
-          await fileExport.downloadFile(
-            originUrl,
-            `agility-files/${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/${fileName}`
-          );
-        } catch {
-          console.log('Failed to download file', originUrl);
-          this.unProcessedAssets[assetMediaID] = fileName;
-        }
+        if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, 'progress');
       }
-      progressBar2.update(i + 1);
-    }
 
-    if (multiExport) {
-      for (let i = 0; i < iterations; i++) {
-        recordOffset += pageSize;
+      if (multiExport) {
+        for (let iter = 1; iter < iterations; iter++) { 
+          recordOffset += pageSize;
+          processedAssetsInLoop = 0;
 
-        let assets = await apiClient.assetMethods.getMediaList(
-          pageSize,
-          recordOffset,
-          guid
-        );
-        fileExport.exportFiles(
-          `${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/json`,
-          i + 1,
-          assets
-        );
+          let assetsPage = await apiClient.assetMethods.getMediaList(
+            pageSize,
+            recordOffset,
+            guid
+          );
+          fileExport.exportFiles(
+            assetsJsonPath,
+            index,
+            assetsPage
+          );
+          index++;
 
-        for (let j = 0; j < assets.assetMedias.length; j++) {
-          const originUrl = assets.assetMedias[j].originUrl;
-          const mediaID = assets.assetMedias[j].mediaID;
+          for (let j = 0; j < assetsPage.assetMedias.length; j++) {
+            totalAttemptedToProcess++;
+            const assetMedia = assetsPage.assetMedias[j];
+            const originUrl = assetMedia.originUrl;
+            const mediaID = assetMedia.mediaID;
+            const filePath = this.getFilePath(originUrl);
+            const folderPath = filePath.split("/").slice(0, -1).join("/");
+            const fileName = `${assetMedia.fileName}`;
+            const assetDownloadPath = this._legacyFolders ? basePath : assetsContentPath;
 
-          const filePath = this.getFilePath(originUrl);
-          const folderPath = filePath.split("/").slice(0, -1).join("/");
-          const fileName = `${assets.assetMedias[j].fileName}`;
+            if (this.isUrlProperlyEncoded(originUrl)) {
+              this.unProcessedAssets[mediaID] = fileName;
+              if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, 'progress');
+              continue;
+            }
 
-          if (this.isUrlProperlyEncoded(originUrl)) {
-            this.unProcessedAssets[mediaID] = fileName;
-            progressBar2.update(recordOffset + j + 1);
-            continue;
-          }
-          if (folderPath) {
-            fileExport.createFolder(
-              `${guid}/${locale}/${
-                isPreview ? "preview" : "live"
-              }/assets/${folderPath}`
-            );
+            const destinationFolderPath = folderPath ? path.join(assetDownloadPath, folderPath) : assetDownloadPath;
+            if (folderPath) {
+              fileExport.createFolder(destinationFolderPath);
+            }
+
             try {
               await fileExport.downloadFile(
                 originUrl,
-                `agility-files/${guid}/${locale}/${
-                  isPreview ? "preview" : "live"
-                }/assets/${folderPath}/${fileName}`
+                path.join(destinationFolderPath, fileName)
               );
-            } catch {
+              console.log('✓ Downloaded file', ansiColors.underline(fileName || originUrl.split('/').pop()));
+              totalSuccessfullyDownloaded++;
+            } catch (downloadError: any) {
+              console.error('✗ Failed to download file', ansiColors.red(fileName || originUrl.split('/').pop()), ansiColors.gray(downloadError.message ? `- ${downloadError.message}` : ''));
               this.unProcessedAssets[mediaID] = fileName;
             }
-          } else {
-            try {
-              await fileExport.downloadFile(
-                originUrl,
-                `agility-files/${guid}/${locale}/${
-                  isPreview ? "preview" : "live"
-                }/assets/${fileName}`
-              );
-            } catch {
-              this.unProcessedAssets[mediaID] = fileName;
-            }
+            if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, 'progress');
           }
-          progressBar2.update(recordOffset + j + 1);
         }
       }
+      if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, totalSuccessfullyDownloaded === totalAttemptedToProcess && totalAttemptedToProcess >= totalRecords ? 'success' : 'error');
+    } catch (error) {
+      if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, 'error');
+      throw error;
     }
-
-    fileExport.exportFiles(
-      `${guid}/${locale}/${isPreview ? "preview" : "live"}/assets/failedAssets`,
-      "unProcessedAssets",
-      this.unProcessedAssets
-    );
-    // await this.getGalleries(guid, locale, isPreview);
   }
 
-async deleteAllGalleries(guid:string, locale: string, isPreview: boolean = true){
+  async deleteAllGalleries(guid:string, locale: string, isPreview: boolean = true){
 
     //  TODO: delete all galleries
     let apiClient = new mgmtApi.ApiClient(this._options);
@@ -259,7 +257,7 @@ async deleteAllGalleries(guid:string, locale: string, isPreview: boolean = true)
 
     
 
-}
+  }
 
   async deleteAllAssets(
     guid: string,
@@ -333,5 +331,9 @@ async deleteAllGalleries(guid:string, locale: string, isPreview: boolean = true)
       // If decoding throws an error, the URL is not properly encoded
       return false;
     }
+  }
+
+  async retryUnprocessedAssets(guid: string, locale: string, isPreview: boolean = true) {
+    // Implementation of retryUnprocessedAssets method
   }
 }

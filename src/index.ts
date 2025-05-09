@@ -24,13 +24,8 @@ import { websiteListing } from "types/websiteListing";
 import Clean from "./lib/services/clean";
 import { instanceSelector } from "./lib/instances/instance-list";
 import { localePrompt } from "./lib/prompts/locale-prompt";
-import { assets } from "./lib/services/assets";
-import { containers } from "./lib/services/containers";
-import { models } from "./lib/services/models";
-import { sync } from "./lib/services/sync";
 import { content } from "./lib/services/content";
 import { Pull } from "./lib/services/pull";
-import * as path from "path";
 
 
 // declare module "@agility/management-sdk" {
@@ -44,8 +39,9 @@ export let forceDevMode: boolean = false;
 export let forceLocalMode: boolean = false;
 export let localServer: string;
 export let token: string = null;
-export let blessedUIEnabled: boolean = false;
+export let blessedUIEnabled: boolean = true;
 export let isAgilityDev: boolean = false;
+export let forceNGROK:boolean = false;
 
 // Configure SSL verification based on CLI mode
 function configureSSL() {
@@ -74,30 +70,35 @@ yargs.command({
       type: "boolean",
       default: false,
     },
-    blessed: {
-      describe: "Use experimental Blessed UI for push/sync operations.",
+    headless: {
+      describe: "Turn off the experimental Blessed UI for push/sync operations.",
       type: "boolean",
-      default: true,
+      default: false,
     },
+    verbose: {
+        describe: "Run in verbose mode: all logs to console, no UI elements. Overridden by headless.",
+        type: "boolean",
+        default: false
+    }
   },
   handler: async function (argv) {
-    blessedUIEnabled = argv.blessed as boolean;
-    let auth = new Auth();
-
-    if (argv.dev) {
-      forceDevMode = true;
-    }
-
-    if (argv.local) {
-      forceLocalMode = true;
-    }
+    const useHeadless = argv.headless as boolean;
+    const useVerbose = !useHeadless && (argv.verbose as boolean);
+    const useBlessed = !useHeadless && !useVerbose;
+    blessedUIEnabled = useBlessed;
+    
+    forceDevMode = argv.dev as boolean;
+    forceLocalMode = argv.local as boolean;
 
     configureSSL();
 
+    let auth = new Auth();
     const isAuthorized = await auth.checkAuthorization();
     if (!isAuthorized) {
+      // If auth fails, it should have already logged a message.
       return;
     }
+    console.log("[Debug] Authorization check passed.");
 
     const envCheck = auth.checkForEnvFile();
     if (envCheck.hasEnvFile && envCheck.guid && !forceLocalMode && !forceDevMode) {
@@ -121,13 +122,14 @@ yargs.command({
         console.log(colors.green("●"), colors.green(`${currentWebsite.displayName}`), colors.white(`${instance.guid}`));
         console.log("------------------------------------------------");
 
-        await instancesPrompt(instance, null);
-      } catch (error) {
+        await instancesPrompt(instance, null, useBlessed);
+      } catch (error: any) {
         console.error("Error:", error.message);
         console.log("Please try logging in again with: agility login");
       }
     } else {
-      homePrompt();
+      console.log("[Debug] No valid .env found or in local/dev mode. Entering homePrompt path...");
+      homePrompt(useBlessed);
     }
   },
 });
@@ -179,14 +181,14 @@ yargs.command({
   command: "clean",
   describe: "Scrub all the data out of an instance",
   builder: {
-    blessed: {
+    headless: {
       describe: "Use experimental Blessed UI for push/sync operations.",
       type: "boolean",
       default: false,
     },
   },
   handler: async function (argv) {
-    blessedUIEnabled = argv.blessed as boolean;
+    blessedUIEnabled = !argv.headless as boolean;
     forceLocalMode = true;
     configureSSL();
     let auth = new Auth();
@@ -204,14 +206,14 @@ yargs.command({
   command: "genenv",
   describe: "Generate an env file for your instance.",
   builder: {
-    blessed: {
-      describe: "Use experimental Blessed UI for push/sync operations.",
+    headless: {
+      describe: "Turn off the experimental Blessed UI for push/sync operations.",
       type: "boolean",
       default: false,
     },
   },
   handler: async function (argv) {
-    blessedUIEnabled = argv.blessed as boolean;
+    blessedUIEnabled = !argv.headless as boolean;
     let auth = new Auth();
     const isAuthorized = await auth.checkAuthorization();
     if (isAuthorized) {
@@ -522,19 +524,8 @@ yargs.command({
       type: "string",
       default: "Galleries,Assets,,Models,Containers,Content,Templates,Pages",
     },
-    blessed: {
-      describe: "Use experimental Blessed UI for pull/sync operations.",
-      type: "boolean",
-      default: false,
-    },
-    rootPath: {
-      describe: "Specify the main directory name for instance files (e.g., 'agility-files' or 'my-output-folder'). This will be created in the current directory.",
-      demandOption: false,
-      default: "agility-files",
-      type: "string",
-    },
     legacyFolders: {
-      describe: "(Legacy) Use a flat folder structure.",
+      describe: "Use legacy folder structure (all files in root agility-files folder).",
       demandOption: false,
       type: "boolean",
       default: false,
@@ -542,10 +533,24 @@ yargs.command({
     baseUrl: {
       describe: "(Optional) Specify a base URL for the Agility API, if different from default.",
       type: "string"
+    },
+    blessed: {
+      describe: "Use Blessed UI for rich terminal output. (Deprecated in favor of default behavior)",
+      type: "boolean",
+      default: true
+    },
+    headless: {
+      describe: "Run in headless mode: no console output, logs to file. Overrides verbose and Blessed UI.",
+      type: "boolean",
+      default: false
+    },
+    verbose: {
+      describe: "Run in verbose mode: all logs to console, no UI elements. Overridden by headless.",
+      type: "boolean",
+      default: false
     }
   },
   handler: async function (argv) {
-    blessedUIEnabled = argv.blessed as boolean;
     let auth = new Auth();
     const isAuthorized = await auth.checkAuthorization();
     if (!isAuthorized) {
@@ -558,10 +563,11 @@ yargs.command({
     const channel: string = argv.channel as string;
     const isPreview: boolean = argv.preview as boolean;
     const elements: string[] = (argv.elements as string).split(",");
-    const instanceMainDirName: string = argv.rootPath as string;
+    const instanceMainDirName: string = "agility-files";
     const userBaseUrl: string = argv.baseUrl as string;
     const legacyFolders: boolean = argv.legacyFolders as boolean;
-    const rootPath: string = argv.rootPath as string;
+    const rootPath: string = instanceMainDirName;
+    const { blessed, headless, verbose } = argv;
 
     const envCheck = auth.checkForEnvFile();
     if (envCheck.hasEnvFile) {
@@ -586,7 +592,20 @@ yargs.command({
       return;
     }
 
-    let multibar = createMultibar({ name: 'Pull CLI' });
+    // Determine UI/output mode
+    const useHeadless = headless; // headless takes precedence
+    const useVerbose = !useHeadless && verbose;
+    const useBlessed = !useHeadless && !useVerbose && blessed; // blessed is true by default or from arg
+
+    let multibarInstance = null;
+    if (useBlessed) {
+        // screen, multibar setup as before for Blessed UI
+        // ... (this part might need to be inside Pull or passed differently)
+    } else if (!useHeadless && !useVerbose) {
+        // Potentially setup cli-progress multibar for a basic non-Blessed, non-headless, non-verbose mode
+        // multibarInstance = new cliProgress.MultiBar({ ... });
+    }
+
     let mgmtApiOptions = new mgmtApi.Options();
     mgmtApiOptions.token = await auth.getToken();
 
@@ -594,7 +613,6 @@ yargs.command({
       const user = await auth.getUser(guid);
       if (!user) {
         console.log(colors.red(`Could not retrieve user details for instance ${guid}. Please ensure it's a valid GUID and you have access.`));
-        multibar.stop();
         return;
       }
 
@@ -607,7 +625,6 @@ yargs.command({
 
       if (!apiKeyForPull) {
         console.log(colors.red(`Could not retrieve the required API key (preview: ${isPreview}) for instance ${guid}. Check API key configuration in Agility and --baseUrl if used.`));
-        multibar.stop();
         return;
       }
 
@@ -624,18 +641,27 @@ yargs.command({
         channel,
         isPreview,
         mgmtApiOptions,
-        multibar,
+        multibarInstance,
         elements,
         rootPath,
-        legacyFolders
+        legacyFolders,
+        useBlessed,
+        useHeadless,
+        useVerbose
       );
 
       await pullOperation.pullInstance();
 
     } catch (error) {
       console.error(colors.red("\n❌ An error occurred during the pull command:"), error);
-      multibar.stop();
+      if (multibarInstance) {
+        multibarInstance.stop();
+      }
       process.exit(1);
+    }
+
+    if (useHeadless) {
+      console.log(`Pull operation complete. Log file: ${rootPath}/logs/instancelog.txt`);
     }
   },
 });
@@ -676,8 +702,8 @@ yargs.command({
       type: "string",
       default: "Galleries,Assets,,Models,Containers,Content,Templates,Pages",
     },
-    blessed: {
-      describe: "Use experimental Blessed UI for push/sync operations.",
+    headless: {
+      describe: "Turn off the experimental Blessed UI for push/sync operations.",
       type: "boolean",
       default: false,
     },
@@ -707,7 +733,7 @@ yargs.command({
     }
   },
   handler: async function (argv) {
-    blessedUIEnabled = argv.blessed as boolean;
+    blessedUIEnabled = !argv.headless as boolean;
     let auth = new Auth();
     const isAuthorized = await auth.checkAuthorization();
     if (!isAuthorized) {

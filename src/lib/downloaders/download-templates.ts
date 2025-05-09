@@ -3,6 +3,7 @@ import * as cliProgress from "cli-progress";
 import { fileOperations } from "../services/fileOperations"; // Assuming fileOperations is in services
 import * as fs from "fs"; // For checking if folder is empty
 import * as path from "path"; // For path operations
+import ansiColors from "ansi-colors";
 
 export async function downloadAllTemplates(
   guid: string,
@@ -12,26 +13,25 @@ export async function downloadAllTemplates(
   multibar: cliProgress.MultiBar,
   // basePath will be agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
   // This is constructed by the caller (Pull service)
-  basePath: string 
+  basePath: string,
+  progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
 
   // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
 
   const templatesFolderPath = path.join(basePath, 'templates');
   const fileOps = new fileOperations();
-  let progressBar: cliProgress.SingleBar; // Declare progressBar here
+  // let progressBar: cliProgress.SingleBar; // Old cli-progress bar, remove
 
   // Check if the templates folder exists and is not empty
-  if (fs.existsSync(templatesFolderPath)) {
-    const files = fs.readdirSync(templatesFolderPath);
-    if (files.length > 0) {
-      // console.log(colors.yellow(`Templates folder at ${templatesFolderPath} is not empty. Skipping download.`));
-      // Optionally, add a progress bar item to indicate skipping
-      progressBar = multibar.create(1, 1);
-      progressBar.update(1, { name: "Templates (Skipped - Folder Not Empty)" });
-      return;
-    }
-  }
+  // if (fs.existsSync(templatesFolderPath)) {
+  //   const files = fs.readdirSync(templatesFolderPath);
+  //   if (files.length > 0) {
+  //     console.log(`Templates folder at ${templatesFolderPath} is not empty. Skipping download.`);
+  //     if (progressCallback) progressCallback(1,1, 'success'); 
+  //     return;
+  //   }
+  // }
 
   // Ensure base directory exists before trying to write templates
   if (!fs.existsSync(basePath)) {
@@ -43,35 +43,39 @@ export async function downloadAllTemplates(
   }
 
   let apiClient = new mgmtApi.ApiClient(options);
+  let totalTemplates = 0; // Define totalTemplates in a broader scope for the catch block
   try {
-    let pageTemplates = await apiClient.pageMethods.getPageTemplates(guid, locale, true); // Assuming isPackaged is true
+    // console.log("Fetching list of page templates...");
+    let pageTemplates = await apiClient.pageMethods.getPageTemplates(guid, locale, true); 
+    totalTemplates = pageTemplates.length; // Assign here
+    // console.log(`Found ${totalTemplates} page templates to download.`);
 
-    if (pageTemplates.length === 0) {
-        progressBar = multibar.create(1, 1);
-        progressBar.update(1, { name: "Templates (No templates found)"});
+    if (totalTemplates === 0) {
+        console.log("No page templates found to download.");
+        if (progressCallback) progressCallback(0, 0, 'success'); 
         return;
     }
 
-    progressBar = multibar.create(pageTemplates.length, 0); // Assign here
-    progressBar.update(0, { name: "Downloading Templates" });
-    let index = 0;
+    let processedCount = 0;
+    if (progressCallback) progressCallback(0, totalTemplates, 'progress');
+    // console.log("Starting download of page templates...");
 
-    for (let i = 0; i < pageTemplates.length; i++) {
+    for (let i = 0; i < totalTemplates; i++) {
       let template = pageTemplates[i];
-      index += 1;
-      progressBar.update(index);
-      // fileOps.exportFiles needs to know the 'type' (templates) and the specific ID for the filename,
-      // and the object to save, and the *root* output folder for that type.
-      // The exportFiles method from sync.ts was:
-      // fileExport.exportFiles(`templates`, template.pageTemplateID, template, baseFolder);
-      // Here baseFolder was agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
-      // So, we pass 'templates' as type, template.pageTemplateID as id, template as obj, and templatesFolderPath
-      fileOps.exportFiles(`templates`, template.pageTemplateID, template, basePath); 
+      fileOps.exportFiles(`templates`, template.pageTemplateID, template, basePath);
+      processedCount++;
+      if (progressCallback) progressCallback(processedCount, totalTemplates, 'progress');
+      console.log(`✓ Downloaded template ${ansiColors.cyan(template.pageTemplateName)} ID: ${template.pageTemplateID}`);
     }
-    if (progressBar) progressBar.stop(); // Ensure progress bar stops
+    
+    // Summary of downloaded templates
+    console.log(ansiColors.yellow(`\nDownloaded ${totalTemplates} templates (${processedCount}/${totalTemplates} templates, 0 errors)\n`));
+    // console.log("All page templates downloaded successfully.");
+    if (progressCallback) progressCallback(totalTemplates, totalTemplates, 'success');
   } catch (error) {
-    if (progressBar) progressBar.stop(); // Ensure progress bar stops on error
     console.error("\nError downloading page templates:", error);
-    // Potentially re-throw or handle more gracefully
+    // Use the totalTemplates variable from the outer scope
+    if (progressCallback) progressCallback(0, totalTemplates, 'error'); 
+    throw error; 
   }
 } 

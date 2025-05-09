@@ -6,8 +6,8 @@ inquirer.registerPrompt('checkbox-plus', require('inquirer-checkbox-plus-prompt'
 
 export async function elementsPrompt(type: 'pull' | 'push' = 'pull') {
 
-    const elements = ['Assets', 'Galleries', 'Models', 'Content', 'Pages'];
-    const pushElements = ['Assets', 'Galleries', 'Models', 'Content', 'Pages', 'Containers', 'Templates'];
+    const elements = ['Assets', 'Galleries', 'Models', 'Containers','Content', 'Templates', 'Pages'];
+    const pushElements = ['Assets', 'Galleries', 'Models','Containers', 'Content', 'Templates', 'Pages' ];
     
     console.log(ansiColors.red(`\n⚠️  It is advised to download the entirity of the instance, partial downloads may result in push issues.\n`));
 

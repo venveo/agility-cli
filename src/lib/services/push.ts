@@ -282,7 +282,7 @@ export class push {
             screen.key(['escape', 'q', 'C-c'], function(ch, key) {
                 restoreConsole();
                 screen?.destroy(); // Destroy screen before exiting
-                return homePrompt();
+                return homePrompt(this._useBlessedUI);
                 // return process.exit(0);
             });
 
