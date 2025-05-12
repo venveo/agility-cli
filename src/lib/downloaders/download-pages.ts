@@ -11,57 +11,50 @@ export async function downloadAllPages(
   isPreview: boolean,
   options: mgmtApi.Options,
   multibar: cliProgress.MultiBar,
-  basePath: string, // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  basePath: string, 
+  forceOverwrite: boolean,
   progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
-  // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
-  // The sync client likely places page references (sitemap) in a folder like 'sitemap' or 'page'.
-  // Based on original code, it was 'page' singular: fileOperation.readDirectory(`${guid}/${locale}/${isPreview ? "preview" : "live"}/page`)
-  // However, the @agility/content-sync typically uses 'sitemap' for these flat files.
-  // Let's assume 'sitemap' is the folder containing page reference JSON files after `runSync()`.
   const pageReferencesPath = path.join(basePath, "sitemap"); 
   const pagesDestFolderPath = path.join(basePath, "pages"); 
+  const fileOps = new fileOperations(basePath, guid, locale, isPreview);
 
-  const fileOps = new fileOperations();
-  // let progressBar: cliProgress.SingleBar; // Old cli-progress bar, remove
-
-  // Check if the DESTINATION pages folder exists and is not empty
-  // if (fs.existsSync(pagesDestFolderPath)) {
-  //   const filesInDest = fs.readdirSync(pagesDestFolderPath);
-  //   if (filesInDest.length > 0) {
-  //     console.log(`Pages destination folder at ${pagesDestFolderPath} is not empty. Skipping page download.`);
-  //     if (progressCallback) progressCallback(1, 1, 'success');
-  //     return;
-  //   }
-  // }
-
-  // Ensure base directory and pagesDestFolderPath exist before trying to write pages
-  if (!fs.existsSync(basePath)) {
-    fs.mkdirSync(basePath, { recursive: true });
+  if (forceOverwrite) {
+    console.log(ansiColors.yellow(`Overwrite selected: Existing pages will be refreshed.`));
+  } else {
+    if (fs.existsSync(pagesDestFolderPath)) {
+      const filesInDest = fs.readdirSync(pagesDestFolderPath);
+      if (filesInDest.length > 0) {
+        const pathParts = pagesDestFolderPath.split('/');
+        const displayPath = pathParts.slice(1).join('/'); // Changed from slice(0) to slice(1) to remove first part
+        console.log(ansiColors.yellow(`Skipping Pages download as ${displayPath} exists, and overwrite not selected.`));
+        if (progressCallback) progressCallback(1, 1, 'success'); // Mark as complete (skipped)
+        return;
+      }
+    }
   }
+
   if (!fs.existsSync(pagesDestFolderPath)) {
     fs.mkdirSync(pagesDestFolderPath, { recursive: true });
   }
 
-  // Check if the page references folder exists (it should, after agilitySync.runSync())
   if (!fs.existsSync(pageReferencesPath) || !fs.lstatSync(pageReferencesPath).isDirectory()) {
-    console.log(`Page references folder (sitemap) not found at ${pageReferencesPath}. Skipping page download.`);
-    if (progressCallback) progressCallback(0, 0, 'success'); // No pages to process
+    console.log(ansiColors.yellow(`Page sitemap not found at ${pageReferencesPath} (expected from Content sync). Skipping page download.`));
+    if (progressCallback) progressCallback(0, 0, 'success');
     return;
   }
 
-  // The itemID for sitemaps (flat and nested) is typically the channel reference name, e.g., "website".
-  const sitemapItemID = "website"; // Assuming this is the standard itemID for the channel's sitemap.
+  const sitemapItemID = "website"; 
   const flatSitemapFilePath = path.join(pageReferencesPath, `${sitemapItemID}.json`);
 
   if (!fs.existsSync(flatSitemapFilePath)) {
     console.warn(ansiColors.yellow(`Flat sitemap file not found at ${flatSitemapFilePath}. Skipping page download.`));
-    if (progressCallback) progressCallback(0, 0, 'success'); // No pages to process
+    if (progressCallback) progressCallback(0, 0, 'success');
     return;
   }
   
   let sitemapEntriesToProcess: [string, mgmtApi.PageItem][] = [];
-  let sitemapObject: any = null; // To store the parsed sitemap
+  let sitemapObject: any = null;
 
   try {
     const fileContent = fs.readFileSync(flatSitemapFilePath, "utf-8");
@@ -95,10 +88,10 @@ export async function downloadAllPages(
 
   try {
     for (let i = 0; i < sitemapEntriesToProcess.length; i++) {
-      const [pagePath, pageItem] = sitemapEntriesToProcess[i]; // pageItem is an actual PageItem, pagePath is its key
+      const [pagePath, pageItem] = sitemapEntriesToProcess[i];
 
       try {
-        if (!pageItem.pageID) { // Should be filtered out already, but as a safeguard
+        if (!pageItem.pageID) { 
             console.warn(ansiColors.yellow(`~ Skipping sitemap entry for path ${pagePath}: missing pageID.`));
         } else {
             const page = await apiClient.pageMethods.getPage(pageItem.pageID, guid, locale);

@@ -10,7 +10,7 @@ export function getGalleriesFromFileSystem(
     rootPath?: string,
     legacyFolders?: boolean // Added legacyFolders, not used yet
 ): mgmtApi.assetGalleries[] | null {
-    let fileOperation = new fileOperations(); 
+    let fileOperation = new fileOperations(rootPath, guid, locale, isPreview); 
     const baseFolder = rootPath || 'agility-files';
     let dirPath: string;
 

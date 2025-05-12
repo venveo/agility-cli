@@ -10,7 +10,7 @@ export function getAssetsFromFileSystem(
     rootPath?: string,
     legacyFolders?: boolean
 ): mgmtApi.AssetMediaList[] | null {
-    let fileOperation = new fileOperations();
+    let fileOperation = new fileOperations(rootPath, guid, locale, isPreview);
   
     try{
 

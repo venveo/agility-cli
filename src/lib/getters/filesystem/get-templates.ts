@@ -11,7 +11,7 @@ export async function getTemplatesFromFileSystem(
     legacyFolders?: boolean // Added legacyFolders, not used yet
 ): Promise<mgmtApi.PageModel[] | null> {
     
-    let fileOperation = new fileOperations();
+    let fileOperation = new fileOperations(rootPath, guid, locale, isPreview);
     const baseFolder = rootPath || 'agility-files';
     let dirPath: string;
 

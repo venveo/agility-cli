@@ -3,6 +3,7 @@ import * as cliProgress from "cli-progress";
 import { containers as ContainersService } from "../services/containers"; // Renamed import
 import * as fs from "fs";
 import * as path from "path";
+import ansiColors from "ansi-colors"; // For colored logging
 
 export async function downloadAllContainers(
   guid: string,
@@ -11,21 +12,33 @@ export async function downloadAllContainers(
   options: mgmtApi.Options,
   multibar: cliProgress.MultiBar,
   basePath: string, // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  forceOverwrite: boolean, // New parameter
   progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
   // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
   const containersFolderPath = path.join(basePath, "containers");
   // let progressBar: cliProgress.SingleBar; // Old cli-progress bar, remove
 
-  // Check if the main containers folder exists and is not empty
-//   if (fs.existsSync(containersFolderPath)) {
-//     const filesOrDirs = fs.readdirSync(containersFolderPath);
-//     if (filesOrDirs.length > 0) {
-//       console.log(`Containers folder at ${containersFolderPath} is not empty. Skipping download.`);
-//       if (progressCallback) progressCallback(1, 1, 'success');
-//       return;
-//     }
-//   }
+  if (forceOverwrite) {
+    // REMOVE: fs.rmSync for deleting the folder
+    // if (fs.existsSync(containersFolderPath)) {
+    //   console.log(ansiColors.yellow(`Overwrite selected: Deleting existing containers folder at ${containersFolderPath}`));
+    //   fs.rmSync(containersFolderPath, { recursive: true, force: true });
+    // }
+    // ADD: Log message for overwriting
+    // console.log(ansiColors.yellow(`Overwrite selected: Existing containers will be refreshed.`));
+  } else {
+    if (fs.existsSync(containersFolderPath)) {
+      const filesOrDirs = fs.readdirSync(containersFolderPath);
+      if (filesOrDirs.length > 0) {
+        const pathParts = containersFolderPath.split('/');
+        const displayPath = pathParts.slice(1).join('/'); // Changed from slice(0) to slice(1) to remove first part
+        console.log(ansiColors.yellow(`Skipping Containers download as ${displayPath} exists, and overwrite not selected.`));
+        if (progressCallback) progressCallback(1, 1, 'success'); // Mark as complete (skipped)
+        return;
+      }
+    }
+  }
 
   if (!fs.existsSync(containersFolderPath)) {
     fs.mkdirSync(containersFolderPath, { recursive: true });

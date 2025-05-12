@@ -3,6 +3,7 @@ import * as cliProgress from "cli-progress";
 import * as agilitySync from "@agility/content-sync";
 import * as path from "path";
 import * as fs from 'fs';
+import { overwritePrompt } from '../prompts/overwrite-prompt'; // Import the new prompt
 const storeInterfaceFileSystem = require("./store-interface-filesystem"); 
 const blessed = require('blessed');
 const contrib = require('blessed-contrib');
@@ -38,6 +39,7 @@ export class Pull {
   private isHeadless: boolean;
   private isVerbose: boolean;
   private fileOps: fileOperations; // For logging to file in headless mode
+  private _forceOverwrite: boolean; // Renamed and will be used globally
 
   constructor(
     guid: string,
@@ -53,7 +55,8 @@ export class Pull {
     // New flags controlling UI and output behavior
     useBlessedArgument: boolean = true, // Default to true if not specified, aligns with old blessed flag
     isHeadlessMode: boolean = false,
-    isVerboseMode: boolean = false
+    isVerboseMode: boolean = false,
+    forceOverwrite: boolean = false // Updated parameter name
   ) {
     this._guid = guid;
     this._apiKey = apiKey;
@@ -65,12 +68,13 @@ export class Pull {
     this._elements = elements;
     this._rootPath = rootPath;
     this._legacyFolders = legacyFolders;
+    this._forceOverwrite = forceOverwrite; // Store the global overwrite flag
 
     this.isHeadless = isHeadlessMode;
     this.isVerbose = !this.isHeadless && isVerboseMode; // verbose is overridden by headless
     // _useBlessedUI is true if the blessed argument is true, AND we are not in headless or verbose mode.
     this._useBlessedUI = useBlessedArgument && !this.isHeadless && !this.isVerbose;
-    this.fileOps = new fileOperations(); // Initialize for potential file logging
+    this.fileOps = new fileOperations(rootPath, guid, locale, isPreview); // Initialize for potential file logging
   }
 
   // Add a helper for logging to file in headless mode
@@ -106,9 +110,16 @@ export class Pull {
         // Initial messages will go to the log file.
         console.log("Pull operation started in headless mode.");
     } else if (this.isVerbose) {
-        // In verbose mode, use original console, no Blessed UI, no spinners.
-        // console.log and console.error are already originalConsoleLog/Error
-        originalConsoleLog("Pull operation started in verbose mode."); // Use original directly for startup messages
+        // In verbose mode, log to original console AND to file.
+        console.log = (...args: any[]) => {
+            originalConsoleLog(...args);
+            this._logToFile(args.map(arg => String(arg)).join(' '));
+        };
+        console.error = (...args: any[]) => {
+            originalConsoleError(...args);
+            this._logToFile(args.map(arg => String(arg)).join(' '), true);
+        };
+        console.log("Pull operation started in verbose mode."); // This now uses the override
     } else if (this._useBlessedUI) {
         // Blessed UI Mode setup
         screen = blessed.screen({
@@ -144,13 +155,17 @@ export class Pull {
         });
 
         console.log = (...args: any[]) => {
-            if (logContainer) logContainer.log(args.map(arg => String(arg)).join(' '));
+            const message = args.map(arg => String(arg)).join(' ');
+            if (logContainer) logContainer.log(message);
+            this._logToFile(message);
         };
         console.error = (...args: any[]) => {
-            if (logContainer) logContainer.log(`ERROR: ${args.map(arg => String(arg)).join(' ')}`);
+            const rawMessage = args.map(arg => String(arg)).join(' ');
+            if (logContainer) logContainer.log(`ERROR: ${rawMessage}`);
+            this._logToFile(rawMessage, true);
         };
         
-        originalConsoleLog("Pull operation started with Blessed UI."); // Log this initial message to the Blessed log
+        console.log("Pull operation started with Blessed UI."); // Log this initial message to the Blessed log & file
         // Screen render and focus will happen after progress bars are added
 
         screen.key(['C-c'], (ch: any, key: any) => {
@@ -160,9 +175,16 @@ export class Pull {
             process.exit(0);
         });
     } else {
-        // Fallback: Neither headless, verbose, nor Blessed UI. Use plain console.
-        // console.log and console.error are already originalConsoleLog/Error
-        originalConsoleLog("Pull operation started (basic console output).");
+        // Fallback: Plain console. Log to original console AND to file.
+        console.log = (...args: any[]) => {
+            originalConsoleLog(...args);
+            this._logToFile(args.map(arg => String(arg)).join(' '));
+        };
+        console.error = (...args: any[]) => {
+            originalConsoleError(...args);
+            this._logToFile(args.map(arg => String(arg)).join(' '), true);
+        };
+        console.log("Pull operation started (basic console output)."); // This now uses the override
     }
 
     // basePath calculation (moved slightly down, after initial console setup)
@@ -170,7 +192,7 @@ export class Pull {
     if(this._legacyFolders){
         basePath = path.join(this._rootPath); // If legacy, rootPath is likely just 'agility-files'
     }
-    console.log(`Base path for files: ${basePath}`); // This will go to appropriate log/console
+    console.log(`Base path for files: ${basePath}\n`); // This will go to appropriate log/console
  
     try {
         if (!fs.existsSync(basePath)) {
@@ -246,10 +268,12 @@ export class Pull {
         interface: storeInterfaceFileSystem,
         options: {
           rootPath: basePath,
+          forceOverwrite: this._forceOverwrite
         },
-      },
+      }
     });
 
+    // console.log(ansiColors.green("Syncing content..."));
     // Main loop for processing steps
     for (let i = 0; i < pullSteps.length; i++) {
         const stepName = pullSteps[i];
@@ -281,38 +305,126 @@ export class Pull {
             // In headless mode, or plain console (no verbose, no blessed), stepProgressCallback remains undefined.
 
             if (stepName === 'Content') {
-                // Blessed/Verbose/Headless already logged start
                 
-                if(!this.isHeadless) updateProgress(currentStepIndex, 'progress', 10);
+                const syncTokenPath = path.join(basePath, "state", "sync.json");
+                const contentItemsPath = path.join(basePath, "item");
+                const contentListsPath = path.join(basePath, "list");
 
-                await syncClient.runSync();
-                
-                const itemsPath = path.join(basePath, "item");
-                let itemCount = 0;
-                let itemsFoundMessage = "Content items sync attempted.";
-                try {
-                    if (fs.existsSync(itemsPath)) {
-                        const files = fs.readdirSync(itemsPath);
-                        itemCount = files.filter(file => path.extname(file).toLowerCase() === '.json').length;
-                        itemsFoundMessage = `Found ${itemCount} content item(s).`;
+                if (this._forceOverwrite) { 
+                    const refreshMessage = "Overwrite selected: Local content files will be refreshed by the sync process.";
+                    // if (this.isVerbose) originalConsoleLog(refreshMessage);
+                    // else if (this._useBlessedUI || this.isHeadless) console.log(refreshMessage);
+
+                    // REMOVE: Deletion of sync token, items, and lists
+                    // if (fs.existsSync(syncTokenPath)) {
+                    //     fs.unlinkSync(syncTokenPath);
+                    //     const deletedTokenMsg = `  Deleted sync token: ${syncTokenPath}`;
+                    //     if (this.isVerbose) originalConsoleLog(deletedTokenMsg);
+                    //     else if (this._useBlessedUI || this.isHeadless) console.log(deletedTokenMsg);
+                    // }
+                    // if (fs.existsSync(contentItemsPath)) {
+                    //     fs.rmSync(contentItemsPath, { recursive: true, force: true });
+                    //     const deletedItemsMsg = `  Deleted content items folder: ${contentItemsPath}`;
+                    //     if (this.isVerbose) originalConsoleLog(deletedItemsMsg);
+                    //     else if (this._useBlessedUI || this.isHeadless) console.log(deletedItemsMsg);
+                    // }
+                    // if (fs.existsSync(contentListsPath)) {
+                    //     fs.rmSync(contentListsPath, { recursive: true, force: true });
+                    //     const deletedListsMsg = `  Deleted content lists folder: ${contentListsPath}`;
+                    //     if (this.isVerbose) originalConsoleLog(deletedListsMsg);
+                    //     else if (this._useBlessedUI || this.isHeadless) console.log(deletedListsMsg);
+                    // }
+                } else {
+                    // Logic for non-overwrite: if sync token exists, it implies incremental. If not, it's a full sync naturally.
+                    if (fs.existsSync(syncTokenPath)) {
+                        if (this.isVerbose) originalConsoleLog("Overwrite not selected. Existing content sync token found. Performing incremental content sync.");
+                        else if (this.isHeadless) console.log("Overwrite not selected. Existing content sync token found. Performing incremental content sync.");
+                    } else {
+                        if (this.isVerbose) originalConsoleLog("Overwrite not selected. No existing content sync token. Performing full content sync by default.");
+                        else if (this.isHeadless) console.log("Overwrite not selected. No existing content sync token. Performing full content sync by default.");
                     }
-                } catch (countError: any) { /* message already set by pull.ts if error */ itemsFoundMessage = `Error counting items: ${countError.message}`; }
-
-                const contentSyncMessage = `${stepName} synchronized. ${itemsFoundMessage}`;
-                console.log(`✓ ${contentSyncMessage}`); // To Blessed log, verbose console, or file
+                }
                 
-                updateProgress(currentStepIndex, 'success', 100);
+                if(this._useBlessedUI) updateProgress(currentStepIndex, 'progress', 0); // Initial progress for Content
+                else if (!this.isHeadless && !this.isVerbose) updateProgress(currentStepIndex, 'progress', 0);
+
+
+                try {
+                    await syncClient.runSync();
+                    
+                    // MODIFICATION: Group stats by itemType before logging individually
+                    if (storeInterfaceFileSystem.getAndClearSavedItemStats && typeof storeInterfaceFileSystem.getAndClearSavedItemStats === 'function') {
+                        const savedItemsStats = storeInterfaceFileSystem.getAndClearSavedItemStats();
+                        if (savedItemsStats.length > 0) {
+                            // console.log("--- Items processed by Content Sync ---");
+
+                            // Group stats by itemType
+                            const groupedByType: { [key: string]: Array<{ itemType: string, itemID: string | number, languageCode: string }> } = {};
+                            savedItemsStats.forEach(stat => {
+                                if (!groupedByType[stat.itemType]) {
+                                    groupedByType[stat.itemType] = [];
+                                }
+                                groupedByType[stat.itemType].push(stat);
+                            });
+
+                            // Log items, grouped by type
+                            // You might want to define a specific order for itemTypes if needed, e.g., ['item', 'list', 'page', ...]
+                            // For now, it will log based on the order types were encountered or Object.keys order.
+                            for (const itemType in groupedByType) {
+                                groupedByType[itemType].forEach(stat => {
+                                    console.log(`✓ Downloaded ${ansiColors.cyan(stat.itemType)} (ID: ${stat.itemID})`);
+                                });
+                            }
+                            // console.log("-------------------------------------");
+                        }
+                    }
+                    // END MODIFICATION
+
+                    // After sync, count the items in the 'item' folder
+                    const itemsPath = path.join(basePath, "item");
+                    let itemCount = 0;
+                    let itemsFoundMessage = "Content items sync attempted.";
+                    try {
+                        if (fs.existsSync(itemsPath)) {
+                            const files = fs.readdirSync(itemsPath);
+                            itemCount = files.filter(file => path.extname(file).toLowerCase() === '.json').length;
+                            itemsFoundMessage = `Found ${itemCount} content item(s).`;
+                        }
+                    } catch (countError: any) { itemsFoundMessage = `Error counting items: ${countError.message}`; }
+
+                    
+                    const contentSyncMessage = `${stepName} synchronized. ${itemsFoundMessage}`;
+                    // this._forceOverwrite ? console.log(`✓ ${contentSyncMessage}`) : ''; 
+                    updateProgress(currentStepIndex, 'success', 100);
+
+                } catch (syncError: any) {
+                    // console.error(`!!!!!! SYNC CLIENT ERROR in pull.ts for Content step !!!!!!`);
+                    // console.error(`Error Name: ${syncError.name}`);
+                    // console.error(`Error Message: ${syncError.message}`);
+                    if (syncError.stack) {
+                        console.error(`Error Stack: ${syncError.stack}`);
+                    }
+                    // Check for Agility SDK specific error properties if known, or generic ones
+                    if (syncError.response && syncError.response.data) { 
+                        console.error(`Response Data: ${JSON.stringify(syncError.response.data)}`);
+                    }
+                    if (syncError.details) { // Example for a hypothetical details property
+                        console.error(`Error Details: ${JSON.stringify(syncError.details)}`);
+                    }
+                    updateProgress(currentStepIndex, 'error', this._useBlessedUI ? (stepProgressBars[currentStepIndex]?.filled || 0) : 0);
+                    // Continue to the next step, error is logged and progress bar updated.
+                }
                 continue; 
             }
 
             // Call the appropriate downloader with the mode-specific stepProgressCallback
             switch (stepName) {
-                case 'Galleries': await downloadAllGalleries(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, stepProgressCallback); break;
-                case 'Assets': await downloadAllAssets(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, stepProgressCallback); break;
-                case 'Models': await downloadAllModels(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, stepProgressCallback); break;
-                case 'Containers': await downloadAllContainers(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, stepProgressCallback); break;
-                case 'Templates': await downloadAllTemplates(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, stepProgressCallback); break;
-                case 'Pages': await downloadAllPages(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, stepProgressCallback); break;
+                case 'Galleries': await downloadAllGalleries(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Assets': await downloadAllAssets(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Models': await downloadAllModels(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Containers': await downloadAllContainers(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Templates': await downloadAllTemplates(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Pages': await downloadAllPages(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
             }
             
             if (stepStatuses[currentStepIndex] === 0) { 
@@ -351,10 +463,11 @@ export class Pull {
         // No console restore needed as we used original console directly.
     } else if (this.isHeadless) {
         // Headless mode gets its final summary message via the handler in index.ts
-        // because it needs the original console restored AFTER pullInstance finishes.
-        // We just need to ensure the log file is complete.
-        // No console restore needed here as console was redirected.
-        originalConsoleLog(`Pull complete (headless). Log: ${this._rootPath}/logs/instancelog.txt`); // Log completion to file itself
+        // This logs a final status *into the log file itself*.
+        const finalLogMessage = overallSuccess 
+            ? "All selected pull operations completed successfully (headless mode)."
+            : "One or more pull operations encountered errors (headless mode). Please check log.";
+        console.log(finalLogMessage); // This will use _logToFile due to override
     } else {
         // Plain console mode (useOraSpinners was true, or fallback)
         if (overallSuccess) {
@@ -366,6 +479,8 @@ export class Pull {
     }
 
     // restoreConsole(); // Generally handled by Ctrl+C for Blessed, or not needed for others unless errors occurred early.
-
+    const finalizedLogPath = this.fileOps.finalizeLogFile('pull');
+    originalConsoleLog(`
+Log file written to: ${finalizedLogPath}`);
   }
 }

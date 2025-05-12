@@ -10,7 +10,7 @@ export async function getPagesFromFileSystem(
     rootPath?: string,
     legacyFolders?: boolean
 ): Promise<mgmtApi.PageItem[] | null> {
-    let fileOperation = new fileOperations();
+    let fileOperation = new fileOperations(rootPath, guid, classLocale, isPreview);
     const baseFolder = rootPath || 'agility-files';
     let dirPath: string;
 

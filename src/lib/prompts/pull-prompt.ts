@@ -16,6 +16,7 @@ import { promises as fsPromises } from 'fs';
 import { Pull } from "../services/pull";
 import * as path from 'path';
 import rootPathPrompt from "./root-path-prompt";
+import { overwritePrompt } from './overwrite-prompt';
 
 inquirer.registerPrompt('fuzzypath', require('inquirer-fuzzy-path'))
 
@@ -32,26 +33,28 @@ export async function pullFiles(selectedInstance: AgilityInstance, useBlessedUI:
     const channel = await channelPrompt();
     const preview = await isPreviewPrompt();
     const rootPath = await rootPathPrompt();
-    const elements:any = await elementsPrompt();
+    const elements: any = await elementsPrompt();
 
-    return await downloadFiles(guid, locale, channel, baseUrl, preview, elements, rootPath, useBlessedUI);
+    // central configuration for where you download files to
+    const fullPath = path.join(rootPath, guid, locale, preview ? 'preview':'live');
+    let userWantsToOverwrite = await overwritePrompt(fullPath);
+
+    return await downloadFiles(guid, locale, channel, baseUrl, preview, elements, rootPath, useBlessedUI, userWantsToOverwrite, fullPath);
 }
 
 
-async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any, elements: any, rootPath: string, useBlessedUI: boolean) {
+async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: any | null, isPreview: any, elements: any, rootPath: string, useBlessedUI: boolean, forceOverwrite: boolean, fullPath: string) {
     auth = new Auth();
     let userBaseUrl: string = baseUrl as string;
     
-    let multibar = null; // createMultibar({name: 'Pull'});
+    let multibar = null; 
 
     options = new mgmtApi.Options();
     options.token = await auth.getToken();
-    // options.baseUrl = auth.determineBaseUrl(guid); // Pull service might determine this based on flags/env
 
     let user = await auth.getUser(guid);
 
-    const instanceFilesParentPath = '.'; // Relative to CWD
-    const fullPath = path.join(instanceFilesParentPath, rootPath, guid, locale, isPreview ? 'preview':'live');
+    const instanceFilesParentPath = '.'; 
         
     try {
         const rootDir = path.join(instanceFilesParentPath, rootPath);
@@ -73,8 +76,29 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
         let apiKeyForPull = isPreview ? previewKey : fetchKey;
 
         if(apiKeyForPull){
-            // Message handled by Pull service now based on mode
-            // console.log(colors.yellow(`\nDownloading your instance to ${process.cwd()}/${fullPath}`));
+            // Log user choices before starting the pull
+            try {
+                const logOps = new fileOperations(rootPath, guid, locale, isPreview);
+                const choicesToLog = {
+                    guid,
+                    locale,
+                    channel,
+                    isPreview,
+                    elements,
+                    rootPath,
+                    fullPath, // The actual full path where files will be downloaded
+                    forceOverwrite,
+                    useBlessedUI,
+                    // Assuming headless/verbose are determined within Pull class for now
+                    // If they were passed to downloadFiles, they'd be here too.
+                    timestamp: new Date().toISOString() 
+                };
+                const logMessage = `User Pull Configuration:\n${JSON.stringify(choicesToLog, null, 2)}\n\n`;
+                logOps.appendLogFile(logMessage);
+            } catch (logError: any) {
+                // Log to console if file logging fails, so we don't silently lose this info
+                console.error("Failed to write pull configuration to log file:", logError.message);
+            }
 
             const pullOperation = new Pull(
                 guid,
@@ -83,22 +107,20 @@ async function downloadFiles(guid: string, locale: any, channel: any, baseUrl: a
                 channel,
                 isPreview,
                 options,
-                multibar, // Pass null, Pull service uses flags
+                multibar, 
                 elements,
-                rootPath, // Pass the root path name itself (e.g., agility-files)
-                false, // Assuming legacyFolders is false unless specified elsewhere
-                useBlessedUI, // Pass the flag determining blessed UI use
-                false, // Assuming headless is false unless specified (comes from index.ts)
-                false // Assuming verbose is false unless specified (comes from index.ts)
-                // If pullFiles needs to respect headless/verbose, those flags need to be passed down too.
+                rootPath, 
+                false, // legacyFolders - assumed false for now
+                useBlessedUI, 
+                false, // isHeadlessMode - this needs to come from index.ts if applicable here
+                false, // isVerboseMode - this needs to come from index.ts if applicable here
+                forceOverwrite // Pass the overall overwrite decision
             );
 
             try {
                 await pullOperation.pullInstance();
                 return true;
             } catch (pullError) {
-                // Pull service now logs errors based on mode
-                // console.error(colors.red('\n❌ Download failed during pull operation:'), pullError);
                 return false;
             }
 

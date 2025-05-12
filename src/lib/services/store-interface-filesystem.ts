@@ -6,11 +6,14 @@ const path = require('path')
 const {sleep} = require("../util")
 const { lockSync, unlockSync, checkSync, check }  = require("proper-lockfile")
 
-
+// RE-ADD: Module-scoped array to store stats of saved items
+let _itemsSavedStats: Array<{ itemType: string, itemID: string | number, languageCode: string }> = [];
 
 require("dotenv").config({
 	path: `.env.${process.env.NODE_ENV}`,
 })
+
+
 
 /**
  * The function to handle saving/updating an item to your storage. This could be a Content Item, Page, Url Redirections, Sync State (state), or Sitemap.
@@ -24,14 +27,15 @@ require("dotenv").config({
  * @returns {Void}
  */
 const saveItem = async ({ options, item, itemType, languageCode, itemID }) => {
+
+
+	// console.log('saveItem-> ', itemType, languageCode, itemID);
 	const cwd = process.cwd();
 	let filePath = getFilePath({ options, itemType, languageCode, itemID });
 	const absoluteFilePath = path.resolve(cwd, filePath);
 	let dirPath = path.dirname(absoluteFilePath);
+	const forceOverwrite = options.forceOverwrite;
 
-	console.log(dirPath);
-	console.log(itemType);
-	console.log(itemID);
 
 	try {
 		if (!fs.existsSync(dirPath)) {
@@ -43,24 +47,19 @@ const saveItem = async ({ options, item, itemType, languageCode, itemID }) => {
 		}
 
 		let json = JSON.stringify(item);
-
-
+        // Add specific debug logs around file write
+        // console.log(`[Debug saveItem] About to write: ${itemType} (ID: ${itemID}) to ${absoluteFilePath}`);
 		fs.writeFileSync(absoluteFilePath, json);
+        // console.log(`[Debug saveItem] Write successful for: ${absoluteFilePath}`);
 		
 		if (!fs.existsSync(absoluteFilePath)) {
 			throw new Error(`File was not created: ${absoluteFilePath}`);
 		}
-        // Log the successful save operation
-        // This log 
-		// console.log(JSON.stringify(item, null, 2));
-		console.log(itemType)
-		//iwill be captured by Blessed UI if console.log is redirected
-        if(itemType === 'item'){
-			console.log(`✓ Downloaded content item ${ansiColors.cyan(item?.properties?.referenceName)} (ID: ${itemID})`);
-		}
-		// if(itemType === 'page'){
-		// 	console.log(`✓ Downloaded page ${ansiColors.cyan(item.title)} (ID: ${itemID})`);
-		// }
+
+		// REMOVE direct log, PUSH to stats array
+        // console.log(`✓ Downloaded ${ansiColors.cyan(itemType)} (ID: ${itemID})`);
+        _itemsSavedStats.push({ itemType, itemID, languageCode });
+       
 		
 	} catch (error) {
 		console.error('Error in saveItem:', error);
@@ -232,6 +231,12 @@ const getFilePath = ({ options, itemType, languageCode, itemID }) => {
 		return path.join(options.rootPath, itemType, fileName);
 }
 
+// RE-ADD: New function to get and clear saved item stats
+const getAndClearSavedItemStats = () => {
+    const stats = [..._itemsSavedStats];
+    _itemsSavedStats = []; // Clear the buffer for the next operation
+    return stats;
+};
 
 module.exports = {
 	saveItem,
@@ -239,5 +244,6 @@ module.exports = {
 	mergeItemToList,
 	getItem,
 	clearItems,
-	mutexLock
+	mutexLock,
+    getAndClearSavedItemStats // RE-ADD Export
 }

@@ -98,8 +98,7 @@ yargs.command({
       // If auth fails, it should have already logged a message.
       return;
     }
-    console.log("[Debug] Authorization check passed.");
-
+    
     const envCheck = auth.checkForEnvFile();
     if (envCheck.hasEnvFile && envCheck.guid && !forceLocalMode && !forceDevMode) {
       try {
@@ -128,7 +127,6 @@ yargs.command({
         console.log("Please try logging in again with: agility login");
       }
     } else {
-      console.log("[Debug] No valid .env found or in local/dev mode. Entering homePrompt path...");
       homePrompt(useBlessed);
     }
   },
@@ -506,6 +504,7 @@ yargs.command({
       describe: "Provide the locale to pull your instance. If not provided, will use AGILITY_LOCALES from .env file if available.",
       demandOption: false,
       type: "string",
+
     },
     channel: {
       describe: "Provide the channel to pull your instance from.",
@@ -843,6 +842,12 @@ yargs.command({
       demandOption: true,
       type: "string",
     },
+    rootPath: {
+      describe: "Specify the root path for the pull operation.",
+      demandOption: false,
+      default: "agility-files",
+      type: "string",
+    },
     contentItems: {
       describe: "What content items to update",
       demandOption: false,
@@ -854,8 +859,9 @@ yargs.command({
     const guid: string = argv.guid as string;
     const locale: string = argv.locale as string;
     const contentItems: string = argv.contentItems as string;
+    const rootPath: string = argv.rootPath as string;
 
-    const code = new fileOperations();
+    const code = new fileOperations(rootPath, guid, locale, true);
     auth = new Auth();
     const codeFileStatus = code.codeFileExists();
 
@@ -949,7 +955,7 @@ yargs.command({
     const locale: string = argv.locale as string;
     const contentItems: number[] = (argv.contentItems as string).split(",").map(Number);
 
-    const code = new fileOperations();
+    const code = new fileOperations('agility-files', guid, locale, true);
     auth = new Auth();
     const codeFileStatus = code.codeFileExists();
 
@@ -1093,3 +1099,4 @@ yargs.parse();
 
 // Prevent the script from exiting
 setInterval(() => {}, 1000);
+

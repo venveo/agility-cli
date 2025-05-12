@@ -11,6 +11,7 @@ import { AgilityInstance } from "../../types/instance";
 import { blessedUIEnabled } from "../../index";
 import { elementsPrompt } from "./elements-prompt";
 import { push } from "../services/push";
+import rootPathPrompt from "./root-path-prompt";
 inquirer.registerPrompt("fuzzypath", require("inquirer-fuzzy-path"));
 
 const FormData = require("form-data");
@@ -26,8 +27,10 @@ export async function pushFiles(instance: any, useBlessedUI: boolean) {
   const locale = await localePrompt(selectedInstance);
   const preview = await isPreviewPrompt();
   const elements:any = await elementsPrompt('push');
+  const rootPath = await rootPathPrompt();
 
-  let code = new fileOperations();
+  const basePath = `${rootPath}/${guid}/${locale}/${preview ? 'preview' : 'live'}`;
+  let code = new fileOperations(basePath, guid, locale, preview);
   auth = new Auth();
 
   let agilityFolder = code.cliFolderExists();

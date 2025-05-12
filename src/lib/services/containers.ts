@@ -40,7 +40,7 @@ export class containers {
             } else if (totalContainers > 0 && this._multibar && !this._legacyFolders) {
             } 
     
-            let fileExport = new fileOperations();
+            let fileExport = new fileOperations(this._rootPath, guid, locale, isPreview);
             let containersDestPath: string;
 
             if (this._legacyFolders) {
@@ -107,7 +107,7 @@ export class containers {
             const basePath = this._legacyFolders ? this._rootPath : path.join(this._rootPath, guid, locale, isPreview ? "preview" : "live");
             const containersReadPath = path.join(basePath, 'containers');
 
-            let fileOperation = new fileOperations();
+            let fileOperation = new fileOperations(this._rootPath, guid, locale, isPreview);
             let files = fileOperation.readDirectory(this._legacyFolders ? `${guid}/${locale}/${isPreview ? "preview":"live"}/containers` : containersReadPath);
     
             let containerStr: string[] = [];
@@ -128,7 +128,7 @@ export class containers {
     }
 
     deleteContainerFiles(containersToDelete: string[], guid: string, locale:string, isPreview:boolean = true){
-        let file = new fileOperations();
+        let file = new fileOperations(this._rootPath, guid, locale, isPreview);
         const basePath = this._legacyFolders ? this._rootPath : path.join(this._rootPath, guid, locale, isPreview ? "preview" : "live");
         const containersBasePath = path.join(basePath, 'containers');
 

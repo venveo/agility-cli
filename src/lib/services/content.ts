@@ -7,6 +7,8 @@ export class content {
   _multibar: cliProgress.MultiBar;
   _guid: string;
   _locale: string;
+  _rootPath: string;
+  _isPreview: boolean;
   skippedContentItems: { [key: number]: string }; //format Key -> ContentId, Value ReferenceName of the content.
 
   constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, locale: string) {
@@ -14,12 +16,14 @@ export class content {
     this._multibar = multibar;
     this._guid = guid;
     this._locale = locale;
+    this._rootPath = 'agility-files';
+    this._isPreview = true;
     this.skippedContentItems = {};
   }
 
   async updateContentItems(selectedContentItems: string) {
     const apiClient = new mgmtApi.ApiClient(this._options);
-    const fileOperation = new fileOperations();
+    const fileOperation = new fileOperations(this._rootPath, this._guid, this._locale, this._isPreview);
     const contentItemsArray: mgmtApi.ContentItem[] = [];
 
     fileOperation.createLogFile("logs", "instancelog");

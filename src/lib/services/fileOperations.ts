@@ -1,9 +1,28 @@
 import * as fs from 'fs';
 import * as Https from 'https';
+import * as path from 'path';
 const os = require('os');
 os.tmpDir = os.tmpdir;
 
 export class fileOperations{
+
+  private _rootPath: string;
+  private _guid: string;
+  private _locale: string;
+  private _isPreview: boolean;
+  private _basePath: string;
+  private _instanceLogDir: string;
+  private _currentLogFilePath: string;
+
+  constructor(rootPath: string, guid: string, locale: string, isPreview: boolean) {
+    this._rootPath = rootPath;
+    this._guid = guid;
+    this._locale = locale;
+    this._isPreview = isPreview;
+    this._basePath = path.join(this._rootPath, this._guid, this._locale, this._isPreview ? 'preview' : 'live');
+    this._instanceLogDir = path.join(this._rootPath, this._guid, this._locale, this._isPreview ? 'preview' : 'live', 'logs');
+    this._currentLogFilePath = path.join(this._instanceLogDir, 'instancelog.txt');
+  }
 
     exportFiles(folder: string, fileIdentifier: any, extractedObject: any, baseFolder?: string) {
         if (baseFolder === undefined || baseFolder === '') {
@@ -48,17 +67,10 @@ export class fileOperations{
     }
 
     appendLogFile(data: string){
-      let fileName =  `agility-files/logs/instancelog.txt`;
-
-      if(!fs.existsSync(`agility-files`)){  
-        fs.mkdirSync(`agility-files`);
+      if (!fs.existsSync(this._instanceLogDir)) {
+        fs.mkdirSync(this._instanceLogDir, { recursive: true });
       }
-
-      if(!fs.existsSync(`agility-files/logs`)){
-        fs.mkdirSync(`agility-files/logs`);
-      }
-
-      fs.appendFileSync(fileName, data);
+      fs.appendFileSync(this._currentLogFilePath, data);
     }
     
     createFolder(folder: string): boolean {
@@ -290,6 +302,41 @@ export class fileOperations{
       return true;
     } else{
       return false;
+    }
+  }
+
+  public finalizeLogFile(operationType: 'pull' | 'push'): string {
+    const now = new Date();
+    const pad = (num: number) => String(num).padStart(2, '0');
+
+    const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const timestamp = `${dateStr}-${timeStr}`;
+
+    if (!fs.existsSync(this._currentLogFilePath)) {
+      // If the initial log file doesn't exist, there's nothing to rename.
+      // This might happen if no logging occurred.
+      // We can either create an empty one to signify the operation or just return an expected path.
+      // For now, let's log a message and return the expected path if it were created.
+      console.warn(`Log file ${this._currentLogFilePath} not found. Cannot finalize.`);
+      const newLogFileName = `${operationType}-${timestamp}.txt`;
+      return path.join(this._instanceLogDir, newLogFileName);
+    }
+
+    const newLogFileName = `${operationType}-${timestamp}.txt`;
+    const newLogFilePath = path.join(this._instanceLogDir, newLogFileName);
+
+    try {
+      // Ensure the directory exists (it should, if appendLogFile was called)
+      if (!fs.existsSync(this._instanceLogDir)) {
+        fs.mkdirSync(this._instanceLogDir, { recursive: true });
+      }
+      fs.renameSync(this._currentLogFilePath, newLogFilePath);
+      return newLogFilePath;
+    } catch (error) {
+      console.error(`Error renaming log file from ${this._currentLogFilePath} to ${newLogFilePath}:`, error);
+      // Fallback: return the original path or throw, depending on desired error handling
+      return this._currentLogFilePath; // Or throw error;
     }
   }
 }

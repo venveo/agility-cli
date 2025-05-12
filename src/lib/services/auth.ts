@@ -275,18 +275,7 @@ export class Auth {
     }
   }
 
-  async updateCodeFileStatus(status: string, environment: string) {
-    let file = new fileOperations();
-    if (file.codeFileExists()) {
-      let data = JSON.parse(file.readTempFile("code.json"));
-      // file.deleteCodeFile()
-      data.status = status;
-      data.environment = environment;
-      file.createTempFile("code.json", JSON.stringify(data, null, 4));
-    } else {
-      throw new Error("Code file does not exist");
-    }
-  }
+  
 
   async cliPoll(formData: FormData, guid: string = "blank-d") {
     let apiPath = `CliPoll`;

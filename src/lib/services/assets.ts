@@ -29,7 +29,7 @@ export class assets {
 
   async getGalleries(guid: string, locale: string, isPreview: boolean = true) {
     let apiClient = new mgmtApi.ApiClient(this._options);
-    let fileExport = new fileOperations();
+    let fileExport = new fileOperations(this._rootPath, guid, locale, isPreview);
 
     let pageSize = 250;
     let rowIndex = 0;
@@ -112,7 +112,7 @@ export class assets {
 
   async getAssets(guid: string, locale: string, isPreview: boolean = true) {
     let apiClient = new mgmtApi.ApiClient(this._options);
-    let fileExport = new fileOperations();
+    let fileExport = new fileOperations(this._rootPath, guid, locale, isPreview);
 
     let pageSize = 250;
     let recordOffset = 0;

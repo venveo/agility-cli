@@ -14,24 +14,39 @@ export async function downloadAllTemplates(
   // basePath will be agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
   // This is constructed by the caller (Pull service)
   basePath: string,
+  forceOverwrite: boolean, // New parameter
   progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
 
   // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
 
   const templatesFolderPath = path.join(basePath, 'templates');
-  const fileOps = new fileOperations();
+  const fileOps = new fileOperations(basePath, guid, locale, isPreview);
   // let progressBar: cliProgress.SingleBar; // Old cli-progress bar, remove
 
-  // Check if the templates folder exists and is not empty
-  // if (fs.existsSync(templatesFolderPath)) {
-  //   const files = fs.readdirSync(templatesFolderPath);
-  //   if (files.length > 0) {
-  //     console.log(`Templates folder at ${templatesFolderPath} is not empty. Skipping download.`);
-  //     if (progressCallback) progressCallback(1,1, 'success'); 
-  //     return;
-  //   }
-  // }
+  if (forceOverwrite) {
+    // REMOVE: fs.rmSync for deleting the folder
+    // if (fs.existsSync(templatesFolderPath)) {
+    //   console.log(ansiColors.yellow(`Overwrite selected: Deleting existing templates folder at ${templatesFolderPath}`));
+    //   fs.rmSync(templatesFolderPath, { recursive: true, force: true });
+    // }
+    // ADD: Log message for overwriting
+    // console.log(ansiColors.yellow(`Overwrite selected: Existing templates will be refreshed.`));
+  } else {
+    if (fs.existsSync(templatesFolderPath)) {
+      const files = fs.readdirSync(templatesFolderPath);
+      if (files.length > 0) {
+        const pathParts = templatesFolderPath.split('/');
+        const displayPath = pathParts.slice(1).join('/'); // Changed from slice(0) to slice(1) to remove first part
+        console.log(ansiColors.yellow(`Skipping Templates download as ${displayPath} exists, and overwrite not selected.`));
+        // To correctly update progress, we should ideally know total templates even when skipping.
+        // However, fetching total templates just to skip might be inefficient.
+        // For now, assume success for the step if skipped.
+        if (progressCallback) progressCallback(1, 1, 'success'); // Simplified success for skipped step
+        return;
+      }
+    }
+  }
 
   // Ensure base directory exists before trying to write templates
   if (!fs.existsSync(basePath)) {

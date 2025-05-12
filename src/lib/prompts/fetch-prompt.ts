@@ -13,6 +13,7 @@ import { instancesPrompt } from "./instance-prompt";
 import { AgilityInstance } from "../../types/instance";
 import ansiColors from "ansi-colors";
 import { blessedUIEnabled } from "../../index";
+import rootPathPrompt from "./root-path-prompt";
 
 export async function fetchCommandsPrompt(
   selectedInstance: AgilityInstance,
@@ -21,9 +22,10 @@ export async function fetchCommandsPrompt(
   locale: string,
   channel: string,
   isPreview: boolean,
-  apiKey: string
+  apiKey: string,
+  rootPath: string
 ) {
-  let files = new fileOperations();
+  let files = new fileOperations(rootPath, guid, locale, isPreview);
   let data: any = null;
   const api = agilitySDK.getApi({
     guid,
@@ -206,13 +208,14 @@ export async function fetchAPIPrompt(selectedInstance: AgilityInstance, keys: an
   const channel = await channelPrompt();
   const isPreview = await isPreviewPrompt();
   const baseUrl = await getBaseURLfromGUID(guid);
+  const rootPath = await rootPathPrompt();
   const apiKey = isPreview ? keys.previewKey : keys.fetchKey;
-  let code = new fileOperations();
+  let code = new fileOperations(rootPath, guid, locale, isPreview);
 
   // we need to make sure there's a fetch folder in the path directory
   code.createFolder(`/${guid}/${locale}/${isPreview ? 'preview' : 'live'}/fetch`);
       
-  const data = await fetchCommandsPrompt(selectedInstance, keys, guid, locale, channel, isPreview, apiKey);
+  const data = await fetchCommandsPrompt(selectedInstance, keys, guid, locale, channel, isPreview, apiKey, rootPath);
 
   if (data) {
     console.log(ansiColors.yellow("\Search the data or hit enter/return to view full API response."));

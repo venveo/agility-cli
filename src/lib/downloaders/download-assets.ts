@@ -3,6 +3,7 @@ import * as cliProgress from "cli-progress";
 import { assets as AssetsService } from "../services/assets";
 import * as fs from "fs";
 import * as path from "path";
+import ansiColors from "ansi-colors"; // For colored logging
 
 export async function downloadAllAssets(
   guid: string,
@@ -10,56 +11,67 @@ export async function downloadAllAssets(
   isPreview: boolean,
   options: mgmtApi.Options,
   multibar: cliProgress.MultiBar,
-  basePath: string, // e.g., agility-files/{guid}/{locale}/{isPreview ? "preview" : "live"}
+  basePath: string, 
+  forceOverwrite: boolean, // New parameter
   progressCallback?: (processed: number, total: number, status?: 'success' | 'error' | 'progress') => void
 ): Promise<void> {
-  // let basePath = path.join(rootPath, guid, locale, isPreview ? "preview" : "live");
-  // Check specifically for the asset JSON metadata folder, or the main assets folder 
-  // if it contains files/folders other than just 'galleries'.
-  const assetJsonMetaPath = path.join(basePath, "assets", "json");
   const mainAssetsPath = path.join(basePath, "assets");
-  // let shouldSkip = false;
+  const assetJsonMetaPath = path.join(mainAssetsPath, "json");
 
-  if (fs.existsSync(assetJsonMetaPath) && fs.readdirSync(assetJsonMetaPath).length > 0) {
-    // shouldSkip = true;
-  } else if (fs.existsSync(mainAssetsPath)) {
-    // Check if main assets folder has more than just a 'galleries' subfolder
-    const assetDirContents = fs.readdirSync(mainAssetsPath);
-    const otherAssetContent = assetDirContents.filter(item => item !== 'galleries');
-    if (otherAssetContent.length > 0) {
-        // This implies asset files or their JSON metadata might already exist
-        // shouldSkip = true;
+  if (forceOverwrite) {
+    // REMOVE: fs.rmSync for deleting the folder
+    // if (fs.existsSync(assetJsonMetaPath)) {
+    //   console.log(ansiColors.yellow(`Overwrite selected: Deleting existing asset JSON metadata folder at ${assetJsonMetaPath}`));
+    //   fs.rmSync(assetJsonMetaPath, { recursive: true, force: true });
+    // }
+    // Note: Actual asset binary files are typically within gallery folders or handled by AssetsService.
+    // Clearing assetJsonMetaPath ensures their metadata is re-fetched and they might be re-downloaded by AssetsService.
+    // ADJUST Log message
+    // console.log(ansiColors.yellow(`Overwrite selected: Asset files and metadata will be refreshed.`));
+  } else {
+    let skipDownload = false;
+    if (fs.existsSync(assetJsonMetaPath) && fs.readdirSync(assetJsonMetaPath).length > 0) {
+      skipDownload = true;
+    } else if (fs.existsSync(mainAssetsPath)) {
+      const assetDirContents = fs.readdirSync(mainAssetsPath);
+      // Check if there's anything in mainAssetsPath other than 'galleries' (managed separately) or 'json' (already checked)
+      const otherAssetContent = assetDirContents.filter(item => item !== 'galleries' && item !== 'json');
+      if (otherAssetContent.length > 0) {
+        // This implies other asset files or structures exist directly in mainAssetsPath
+        skipDownload = true;
+      }
+    }
+
+    if (skipDownload) {
+      console.log(ansiColors.yellow(`Skipping Assets download: Local asset files/metadata exist (e.g., in ${assetJsonMetaPath} or ${mainAssetsPath}) and overwrite not selected.`));
+      if (progressCallback) progressCallback(1, 1, 'success'); // Mark as complete (skipped)
+      return;
     }
   }
 
-  // if (shouldSkip) {
-  //   console.log(`Asset folders (e.g. ${assetJsonMetaPath} or ${mainAssetsPath}) are already populated. Skipping asset download.`);
-  //   if (progressCallback) progressCallback(1, 1, 'success');
-  //   return;
-  // }
-
-  // Ensure base assets directory exists if we proceed (though service methods might also do this)
+  // Ensure base assets directory and json metadata directory exist if we proceed
   if (!fs.existsSync(mainAssetsPath)) {
     fs.mkdirSync(mainAssetsPath, { recursive: true });
   }
+  if (!fs.existsSync(assetJsonMetaPath)) {
+    // This might be created by AssetsService too, but ensuring it here is safe if forceOverwrite happened
+    fs.mkdirSync(assetJsonMetaPath, { recursive: true });
+  }
 
-  // Pass the progressCallback to the AssetsService constructor
   const assetsServiceInstance = new AssetsService(options, multibar, basePath, false, progressCallback);
 
   try {
-    // console.log("Starting download of all asset files and metadata...");
-    if (progressCallback) progressCallback(0, 1, 'progress');
+    // AssetsService already calls progressCallback internally for its multiple steps.
+    // Initial call to set to 0% for the overall "Assets" step in pull.ts was handled before calling this.
+    // If progressCallback is directly passed and used by AssetsService, we don't need to call it here explicitly for start/end of this function.
     await assetsServiceInstance.getAssets(guid, locale, isPreview);
-    // console.log("Asset file and metadata download process completed.");
+    // Final success call might be redundant if AssetsService calls it with 100%.
+    // However, to ensure the step in pull.ts is marked complete if AssetsService doesn't do a final 100%:
+    // if (progressCallback) progressCallback(1, 1, 'success'); 
+    // Let AssetsService manage its own detailed progress. pull.ts will mark success upon non-error completion of this function.
   } catch (error) {
-    // console.error(`\nError during asset file download process for ${guid}/${locale}:`, error);
-    // The error specific callback is handled by assetsServiceInstance.getAssets
-    // If it re-throws, then pull.ts will catch it and mark its own step as error.
-    if (progressCallback && !(error instanceof Error && error.message === 'already_handled')) {
-      // Fallback if AssetsService didn't manage to call progressCallback on error
-      // progressCallback(0, 1, 'error'); 
-      // Let the error propagate to be handled by pull.ts step management
-    }
-    throw error; // Re-throw to allow pull.ts to manage its step status
+    // AssetsService should ideally call progressCallback with error status.
+    // If not, this error will propagate, and pull.ts will mark the step as error.
+    throw error; 
   }
 } 

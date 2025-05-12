@@ -31,7 +31,7 @@ export class models {
         const modelsDestPath = path.join(actualBasePath, "models");
 
         let apiClient = new mgmtApi.ApiClient(this._options);
-        let fileExport = new fileOperations();
+        let fileExport = new fileOperations(this._rootPath, guid, locale, true);
         let successfullyDownloadedCount = 0;
         let totalModels = 0;
         let allModels: mgmtApi.Model[] = []; // To store combined list of content and page models
@@ -121,7 +121,7 @@ export class models {
         try{
             let apiClient = new mgmtApi.ApiClient(this._options);
 
-            let fileOperation = new fileOperations();
+            let fileOperation = new fileOperations(this._rootPath, guid, locale, true);
             let files = fileOperation.readDirectory(`${guid}/${locale}/${isPreview ? 'preview':'live'}/models`);
             let modelStr: string[] = [];
             for(let i = 0; i < files.length; i++){
@@ -142,7 +142,7 @@ export class models {
     }
 
     deleteModelFiles(models: string[], guid: string, locale:string, isPreview:boolean = false){
-        let file = new fileOperations();
+        let file = new fileOperations(this._rootPath, guid, locale, true);
         for(let i = 0; i < models.length; i++){
             let fileName = `${models[i]}.json`;
             file.deleteFile(`agility-files/${guid}/${locale}/${isPreview ? 'preview':'live'}/models/${fileName}`);

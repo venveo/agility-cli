@@ -6,7 +6,6 @@ import { Auth } from "../services/auth";
 import { AgilityInstance } from "types/instance";
 
 export async function homePrompt(useBlessedUI: boolean, prompt?: any) {
-    console.log("[Debug] homePrompt function started.");
     await inquirer
     .prompt([
       {
