@@ -25,21 +25,32 @@ export class fileOperations{
   }
 
     exportFiles(folder: string, fileIdentifier: any, extractedObject: any, baseFolder?: string) {
-        if (baseFolder === undefined || baseFolder === '') {
-            baseFolder = 'agility-files';
+        let effectiveBase: string;
+        if (baseFolder) {
+            // If baseFolder is provided, use it directly.
+            // It's assumed to be the correct base, whether absolute or relative.
+            effectiveBase = baseFolder;
+        } else {
+            // If no baseFolder is provided, check if the 'folder' argument itself is absolute.
+            if (path.isAbsolute(folder)) {
+                // If 'folder' is absolute, it defines the complete path up to its own level.
+                // So, the effectiveBase is empty string, and 'folder' will be joined from root.
+                effectiveBase = "";
+            } else {
+                // If 'folder' is relative, default to 'agility-files' as the base, relative to CWD.
+                effectiveBase = 'agility-files';
+            }
         }
         
-        // Create the full directory path
-        const fullPath = `${baseFolder}/${folder}`;
-        const path = require('path');
-        const normalizedPath = path.normalize(fullPath);
+        // Create the full directory path using path.join for OS-independent path construction
+        const directoryForFile = path.join(effectiveBase, folder);
         
-        // Create the directory structure
-        if (!fs.existsSync(normalizedPath)) {
-            fs.mkdirSync(normalizedPath, { recursive: true });
+        // Ensure the directory structure exists
+        if (!fs.existsSync(directoryForFile)) {
+            fs.mkdirSync(directoryForFile, { recursive: true });
         }
         
-        let fileName = `${normalizedPath}/${fileIdentifier}.json`;
+        const fileName = path.join(directoryForFile, `${fileIdentifier}.json`);
         fs.writeFileSync(fileName, JSON.stringify(extractedObject));
     }
 
@@ -75,8 +86,12 @@ export class fileOperations{
     
     createFolder(folder: string): boolean {
         try {
-            const path = require('path');
-            const fullPath = path.join('agility-files', folder);
+            let fullPath: string;
+            if (path.isAbsolute(folder)) {
+                fullPath = folder;
+            } else {
+                fullPath = path.join('agility-files', folder);
+            }
             
             // Normalize the path and split into segments
             const normalizedPath = path.normalize(fullPath);
@@ -224,6 +239,7 @@ export class fileOperations{
       baseFolder = 'agility-files';
     }
     let directory = `${baseFolder}/${folderName}`;
+
     let files : string[] = [];
     fs.readdirSync(directory).forEach(file => {
       let readFile = this.readFile(`${directory}/${file}`);

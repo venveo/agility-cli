@@ -13,14 +13,15 @@ export function getAssetsFromFileSystem(
     let fileOperation = new fileOperations(rootPath, guid, locale, isPreview);
   
     try{
+      
+        const baseFolder = rootPath || 'agility-files'; 
+        let dirPath = `${guid}/${locale}/${isPreview ? 'preview':'live'}/assets/json`;
 
-        const baseFolder = rootPath || 'agility-files';
-        let dirPath = `${baseFolder}/${guid}/${locale}/${isPreview ? 'preview':'live'}/assets/json`;
         if(legacyFolders){
-            dirPath = `${baseFolder}/assets`;
+            dirPath = `assets/json`;
         }
 
-        let files = fileOperation.readDirectory(dirPath);
+        let files = fileOperation.readDirectory(dirPath, baseFolder);
 
         let assets: mgmtApi.AssetMediaList[] = [];
 

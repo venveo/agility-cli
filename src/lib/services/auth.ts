@@ -3,7 +3,7 @@ import { cliToken } from "../../types/cliToken";
 import { fileOperations } from "./fileOperations";
 import { serverUser } from "../../types/serverUser";
 import { WebsiteUser } from "../../types/websiteUser";
-import { forceDevMode, forceLocalMode, forceNGROK } from "../..";
+import { forceDevMode, forceLocalMode, forcePreProdMode } from "../..";
 import { AgilityInstance } from "../../types/instance";
 const open = require("open");
 const FormData = require("form-data");
@@ -25,8 +25,8 @@ function logReplace(text) {
 }
 
 export class Auth {
-  getEnv(): "dev" | "local" | "prod" {
-    return forceDevMode ? "dev" : forceLocalMode ? "local" : "prod";
+  getEnv(): "dev" | "local" | "preprod" | "prod" {
+    return forceLocalMode ? "local" : forceDevMode ? "dev" : forcePreProdMode ? "preprod" : "prod";
   }
 
   checkForEnvFile(): { hasEnvFile: boolean; guid?: string; channel?: string, locales?: string[] } {
@@ -102,6 +102,10 @@ export class Auth {
       return "https://mgmt-dev.aglty.io";
     }
 
+    if (forcePreProdMode) {
+      return "https://management-api-us-pre-prod.azurewebsites.net";
+    }
+
 
     if (guid?.endsWith("d")) {
       return "https://mgmt-dev.aglty.io";
@@ -126,10 +130,20 @@ export class Auth {
   }
 
   getInstancePoll(): AxiosInstance {
-    let baseURL = forceDevMode ? "https://mgmt-dev.aglty.io" : "https://mgmt.aglty.io";
+    let baseURL = "https://mgmt.aglty.io";
+
+    if(forceDevMode) {
+      baseURL = "https://mgmt-dev.aglty.io";
+    }
+    
+    if (forcePreProdMode) {
+      baseURL = "https://management-api-us-pre-prod.azurewebsites.net";
+    }
+    
     if (forceLocalMode) {
       baseURL = "https://localhost:5050";
     }
+    
     let instance = axios.create({
       baseURL: `${baseURL}/oauth`,
     });
@@ -168,21 +182,11 @@ export class Auth {
   async authorize() {
     let code = await this.generateCode();
 
-    let localDevUrl = `https://localhost:5050/oauth/Authorize?response_type=code&redirect_uri=https://localhost:5050/oauth/CliAuth&state=cli-code%2e${code}`;
-    let devUrl = `https://mgmt-dev.aglty.io/oauth/Authorize?response_type=code&redirect_uri=https://mgmt-dev.aglty.io/oauth/CliAuth&state=cli-code%2e${code}`;
-    let prodUrl = `https://mgmt.aglty.io/oauth/Authorize?response_type=code&redirect_uri=https://mgmt.aglty.io/oauth/CliAuth&state=cli-code%2e${code}`;
+    const baseUrl = this.determineBaseUrl(); // guid is optional and will be handled by determineBaseUrl
+    const redirectUri = `${baseUrl}/oauth/CliAuth`;
+    const authUrl = `${baseUrl}/oauth/Authorize?response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=cli-code%2e${code}`;
 
-    let url = prodUrl;
-    if (forceDevMode) {
-      url = devUrl;
-    }
-
-    if (forceLocalMode) {
-      url = localDevUrl;
-    }
-
-
-    await open(url);
+    await open(authUrl);
     return code;
   }
   async checkAuthorization(): Promise<boolean> {

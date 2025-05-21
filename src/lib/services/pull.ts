@@ -188,19 +188,55 @@ export class Pull {
     }
 
     // basePath calculation (moved slightly down, after initial console setup)
-    let basePath = path.join(this._rootPath, this._guid, this._locale, this._isPreview ? "preview" : "live");
-    if(this._legacyFolders){
-        basePath = path.join(this._rootPath); // If legacy, rootPath is likely just 'agility-files'
+    let resolvedRootPathForInstances: string;
+    const currentWorkingDir = process.cwd();
+    // this._rootPath is from constructor (e.g. "agility-files" or user-provided --rootPath)
+    const rootPathName = this._legacyFolders ? this._rootPath : path.basename(this._rootPath);
+
+
+    if (!this._legacyFolders && path.basename(currentWorkingDir) === rootPathName && this._rootPath === rootPathName) {
+        // We are in a directory that has the same name as the intended root directory (e.g. cwd is /some/path/agility-files and rootPathName is "agility-files")
+        // And we are not using legacy folders, and the _rootPath was just a name (not a path like ../agility-files)
+        resolvedRootPathForInstances = currentWorkingDir;
+        console.log(`Operating within current directory as root for Agility instances: ${resolvedRootPathForInstances}`);
+    } else {
+        // Default behavior: use or create a directory named rootPathName in the current working directory,
+        // or use this._rootPath if it's a more complex path or for legacy mode.
+        const baseForRootPath = this._legacyFolders ? "" : currentWorkingDir; // For legacy, _rootPath might be absolute or already structured
+        resolvedRootPathForInstances = path.resolve(baseForRootPath, this._rootPath);
+        console.log(`Using directory as root for Agility instances: ${resolvedRootPathForInstances}`);
     }
-    console.log(`Base path for files: ${basePath}\n`); // This will go to appropriate log/console
+    
+    // Ensure the resolvedRootPathForInstances itself exists (e.g. ./agility-files or ./custom-root)
+    // This is the folder that will contain the GUID folders.
+    if (!fs.existsSync(resolvedRootPathForInstances)) {
+        fs.mkdirSync(resolvedRootPathForInstances, { recursive: true });
+        // console.log(`Created base instance directory: ${resolvedRootPathForInstances}`);
+    }
+    
+    // This is the path like /path/to/cwd/agility-files/guid/locale/mode
+    // OR /path/to/cwd (if cwd is agility-files)/guid/locale/mode
+    // For legacy mode, if _rootPath was just 'agility-files', instanceSpecificPath becomes 'agility-files'
+    // and guid/locale/mode will be appended by downstream services or sync SDK.
+    // If not legacy, it's resolvedRootPathForInstances/guid/locale/mode
+    let instanceSpecificPath: string;
+    if (this._legacyFolders) {
+        instanceSpecificPath = resolvedRootPathForInstances; // In legacy, this is likely just 'agility-files', subdirs handled later.
+    } else {
+        instanceSpecificPath = path.join(resolvedRootPathForInstances, this._guid, this._locale, this._isPreview ? "preview" : "live");
+    }
+    
+    console.log(`Effective path for instance files: ${instanceSpecificPath}\n`);
  
     try {
-        if (!fs.existsSync(basePath)) {
-            fs.mkdirSync(basePath, { recursive: true });
-            console.log(`Created base directory: ${basePath}`);
+        // For non-legacy, this creates the guid/locale/mode folder.
+        // For legacy, if instanceSpecificPath is just "agility-files", this ensures "agility-files" exists.
+        if (!fs.existsSync(instanceSpecificPath)) {
+            fs.mkdirSync(instanceSpecificPath, { recursive: true });
+            // console.log(`Created instance-specific directory: ${instanceSpecificPath}`);
         }
     } catch (dirError: any) {
-        console.error(`Error creating base directory ${basePath}: ${dirError.message}`);
+        console.error(`Error creating base directory ${instanceSpecificPath}: ${dirError.message}`);
         if (this.isHeadless || this.isVerbose || !this._useBlessedUI) restoreConsole(); // Restore if not using Blessed managed exit
         // No screen to destroy here if it failed this early.
         return; // Exit if base directory can't be created
@@ -267,7 +303,7 @@ export class Pull {
       store: {
         interface: storeInterfaceFileSystem,
         options: {
-          rootPath: basePath,
+          rootPath: instanceSpecificPath,
           forceOverwrite: this._forceOverwrite
         },
       }
@@ -306,9 +342,9 @@ export class Pull {
 
             if (stepName === 'Content') {
                 
-                const syncTokenPath = path.join(basePath, "state", "sync.json");
-                const contentItemsPath = path.join(basePath, "item");
-                const contentListsPath = path.join(basePath, "list");
+                const syncTokenPath = path.join(instanceSpecificPath, "state", "sync.json");
+                const contentItemsPath = path.join(instanceSpecificPath, "item");
+                const contentListsPath = path.join(instanceSpecificPath, "list");
 
                 if (this._forceOverwrite) { 
                     const refreshMessage = "Overwrite selected: Local content files will be refreshed by the sync process.";
@@ -381,7 +417,7 @@ export class Pull {
                     // END MODIFICATION
 
                     // After sync, count the items in the 'item' folder
-                    const itemsPath = path.join(basePath, "item");
+                    const itemsPath = path.join(instanceSpecificPath, "item");
                     let itemCount = 0;
                     let itemsFoundMessage = "Content items sync attempted.";
                     try {
@@ -419,12 +455,12 @@ export class Pull {
 
             // Call the appropriate downloader with the mode-specific stepProgressCallback
             switch (stepName) {
-                case 'Galleries': await downloadAllGalleries(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
-                case 'Assets': await downloadAllAssets(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
-                case 'Models': await downloadAllModels(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
-                case 'Containers': await downloadAllContainers(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
-                case 'Templates': await downloadAllTemplates(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
-                case 'Pages': await downloadAllPages(this._guid, this._locale, this._isPreview, this._options, this._multibar!, basePath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Galleries': await downloadAllGalleries(this._guid, this._locale, this._isPreview, this._options, this._multibar!, instanceSpecificPath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Assets': await downloadAllAssets(this._guid, this._locale, this._isPreview, this._options, this._multibar!, instanceSpecificPath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Models': await downloadAllModels(this._guid, this._locale, this._isPreview, this._options, this._multibar!, instanceSpecificPath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Containers': await downloadAllContainers(this._guid, this._locale, this._isPreview, this._options, this._multibar!, instanceSpecificPath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Templates': await downloadAllTemplates(this._guid, this._locale, this._isPreview, this._options, this._multibar!, instanceSpecificPath, this._forceOverwrite, stepProgressCallback); break;
+                case 'Pages': await downloadAllPages(this._guid, this._locale, this._isPreview, this._options, this._multibar!, instanceSpecificPath, this._forceOverwrite, stepProgressCallback); break;
             }
             
             if (stepStatuses[currentStepIndex] === 0) { 

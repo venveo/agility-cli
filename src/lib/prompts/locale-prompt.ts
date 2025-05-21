@@ -12,7 +12,7 @@ export async function localePrompt(selectedInstance:AgilityInstance) {
     auth = new Auth();
     let guid: string = selectedInstance.guid;
    
-    let options = new mgmtApi.Options();
+    let options = new  mgmtApi.Options();
     options.token = await auth.getToken();
     options.baseUrl = auth.determineBaseUrl(guid);
 

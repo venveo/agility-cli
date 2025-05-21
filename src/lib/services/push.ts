@@ -59,8 +59,9 @@ export class push {
     private legacyFolders: boolean;
     private dryRun: boolean;
     private contentFolder: string;
+    private _logModelDiffs: boolean;
 
-    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean, useBlessedUI?: boolean, elements?: any, rootPath?: string, legacyFolders?: boolean, dryRun?: boolean, contentFolder?: string ){
+    constructor(options: mgmtApi.Options, multibar: cliProgress.MultiBar, guid: string, targetGuid:string, locale:string, isPreview: boolean, useBlessedUI?: boolean, elements?: any, rootPath?: string, legacyFolders?: boolean, dryRun?: boolean, contentFolder?: string, logModelDiffs?: boolean ){
         // Handle SSL certificate verification for local development
         if (process.env.NODE_ENV === 'development' || process.env.LOCAL) {
             process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -91,6 +92,7 @@ export class push {
         this.legacyFolders = legacyFolders ?? false;
         this.dryRun = dryRun ?? false;
         this.contentFolder = contentFolder ?? null;
+        this._logModelDiffs = logModelDiffs ?? false;
     }
 
     async initialize() {
@@ -382,6 +384,7 @@ export class push {
                 let modelStatus: 'success' | 'error' = 'success';
                 const modelStepIndex = currentStep;
                 try {
+                    if (!this._useBlessedUI) console.log(ansiColors.yellow("Pushing Models..."));
                     const models = await getModelsFromFileSystem(
                         this._guid,
                         this._locale,
@@ -401,6 +404,7 @@ export class push {
                         this._options,
                         this._targetGuid,
                         this._referenceMapper,
+                        this._logModelDiffs,
                         modelProgressCallback
                     );
                     modelStatus = modelResult.status;

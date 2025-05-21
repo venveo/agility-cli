@@ -8,7 +8,7 @@ import { fileOperations } from "../services/fileOperations";
 import { localePrompt } from "./locale-prompt";
 import { isPreviewPrompt } from "./isPreview-prompt";
 import { AgilityInstance } from "../../types/instance";
-import { blessedUIEnabled } from "../../index";
+import { blessedUIEnabled, modelDiffsEnabled } from "../../index";
 import { elementsPrompt } from "./elements-prompt";
 import { push } from "../services/push";
 import rootPathPrompt from "./root-path-prompt";
@@ -70,6 +70,7 @@ export async function pushFiles(instance: any, useBlessedUI: boolean) {
         legacyFolders, 
         dryRun,
         contentFolder,
+        modelDiffsEnabled,
         // TODO: Pass headless/verbose flags if push constructor expects them
         // isHeadless, 
         // isVerbose 

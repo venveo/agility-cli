@@ -37,11 +37,13 @@ import { Pull } from "./lib/services/pull";
 let auth: Auth;
 export let forceDevMode: boolean = false;
 export let forceLocalMode: boolean = false;
+export let forcePreProdMode: boolean = false;
 export let localServer: string;
 export let token: string = null;
 export let blessedUIEnabled: boolean = true;
 export let isAgilityDev: boolean = false;
 export let forceNGROK:boolean = false;
+export let modelDiffsEnabled: boolean = false;
 
 // Configure SSL verification based on CLI mode
 function configureSSL() {
@@ -51,7 +53,7 @@ function configureSSL() {
   }
 }
 
-let options: mgmtApi.Options;
+let options = new mgmtApi.Options();
 
 yargs.version("0.0.1_beta").demand(1).exitProcess(false);
 
@@ -61,12 +63,17 @@ yargs.command({
   describe: "Default command",
   builder: {
     dev: {
-      describe: "Enable developer mode",
+      describe: "Enable developer mode", // for development only
       type: "boolean",
       default: false,
     },
     local: {
-      describe: "Enable local mode",
+      describe: "Enable local mode", // for development only
+      type: "boolean",
+      default: false,
+    },
+    preprod: {
+      describe: "Enable preprod mode", // for development only
       type: "boolean",
       default: false,
     },
@@ -79,6 +86,11 @@ yargs.command({
         describe: "Run in verbose mode: all logs to console, no UI elements. Overridden by headless.",
         type: "boolean",
         default: false
+    },
+    modelDiffs: {
+      describe: "Enable detailed logging of model differences during push operations.",
+      type: "boolean",
+      default: false,
     }
   },
   handler: async function (argv) {
@@ -89,7 +101,8 @@ yargs.command({
     
     forceDevMode = argv.dev as boolean;
     forceLocalMode = argv.local as boolean;
-
+    forcePreProdMode = argv.preprod as boolean;
+    modelDiffsEnabled = argv.modelDiffs as boolean;
     configureSSL();
 
     let auth = new Auth();
@@ -100,7 +113,7 @@ yargs.command({
     }
     
     const envCheck = auth.checkForEnvFile();
-    if (envCheck.hasEnvFile && envCheck.guid && !forceLocalMode && !forceDevMode) {
+    if (envCheck.hasEnvFile && envCheck.guid && !forceLocalMode && !forceDevMode && !forcePreProdMode) {
       try {
         let user = await auth.getUser(envCheck.guid);
         let currentWebsite = user.websiteAccess.find((website: websiteListing) => website.guid === envCheck.guid);
@@ -706,6 +719,11 @@ yargs.command({
       type: "boolean",
       default: false,
     },
+    verbose: {
+      describe: "Run in verbose mode: all logs to console, no UI elements. Overridden by headless.",
+      type: "boolean",
+      default: false,
+    },
     rootPath: {
         describe: "Specify the root path for the pull operation.",
         demandOption: false,
@@ -729,10 +747,18 @@ yargs.command({
         demandOption: false,
         type: "string",
         default: "",
+    },
+    modelDiffs: {
+      describe: "Enable detailed logging of model differences.",
+      type: "boolean",
+      default: false,
     }
   },
   handler: async function (argv) {
-    blessedUIEnabled = !argv.headless as boolean;
+    const { headless, verbose } = argv;
+    const useBlessed = !headless && !verbose;
+    blessedUIEnabled = useBlessed;
+
     let auth = new Auth();
     const isAuthorized = await auth.checkAuthorization();
     if (!isAuthorized) {
@@ -753,6 +779,7 @@ yargs.command({
     const legacyFolders: boolean = argv.legacyFolders as boolean;
     const dryRun: boolean = argv.dryRun as boolean;
     const contentFolder: string = argv.contentFolder as string;
+    const logModelDiffs = argv.modelDiffs as boolean;
     // Check for .env file values
     const envCheck = auth.checkForEnvFile();
     if (envCheck.hasEnvFile) {
@@ -779,7 +806,7 @@ yargs.command({
 
     if (!locale) {
       console.log(
-        colors.red("Please provide a locale or ensure you are in a directory with a valid .env file containing AGILITY_LOCALES.")
+        colors.red("Please provide a locale or ensure AGILITY_LOCALES is in your .env file.")
       );
       return;
     }
@@ -815,7 +842,7 @@ yargs.command({
 Pushing elements from ${sourceGuid} (${isPreview ? "preview" : "live"}) to ${targetGuid} for locale ${locale}...`));
       console.log(colors.cyan(`Elements to push: ${elements.join(', ')}`));
       
-      const pusher = new push(options, multibar, sourceGuid, targetGuid, locale, isPreview, blessedUIEnabled, elements, rootPath, legacyFolders, dryRun, contentFolder);
+      const pusher = new push(options, multibar, sourceGuid, targetGuid, locale, isPreview, blessedUIEnabled, elements, rootPath, legacyFolders, dryRun, contentFolder, logModelDiffs);
       await pusher.pushInstance();
 
     } catch (error) {
@@ -877,7 +904,7 @@ yargs.command({
 
         const token = await auth.cliPoll(form, guid);
 
-        options = new mgmtApi.Options();
+        options =  new mgmtApi.Options();
         options.token = token.access_token;
 
         const user = await auth.getUser(guid);

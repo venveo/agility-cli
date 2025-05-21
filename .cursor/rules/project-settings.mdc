@@ -3,54 +3,150 @@ description:
 globs: 
 alwaysApply: true
 ---
-# Project Settings
+# Project Settings: Agility CMS CLI
 
-This is a CLI project for interacting with Agility CMS via Management and Sync APIs / SDKs.
+This CLI project interfaces with Agility CMS using the Management and Sync SDKs. It provides developers with tooling to pull, map, and push content between instances, as well as generate code artifacts for local development.
 
-## Management SDK available in workspace
-For types and functions reference see
-`/Users/aaron/Documents/GitHub/agility-cms-management-sdk-typescript`
+---
 
-## Project Status
+## 🧰 SDK & Workspace
 
-We are currently modernizing the codebase to use inquirer prompts to provide a better visual experience to developers. I have written extensive code on top of the existing layer of the CLI however we now need to ensure the old base commands found in `src/index.ts` can utilize the new file and folder structure of the updated prompt driven layer functionality. 
+This project depends on:
 
-## Agiliy Files
+- Local Management SDK:  
+  `/Users/aaron/Documents/GitHub/agility-cms-management-sdk-typescript`
 
-This project writes instance files to the users local directory, wherever they are using the cli. It creates a folder structure as follows
+Ensure this is linked in your `tsconfig` or `package.json` paths for type resolution.
 
-`/agility-files/{guid}/{locale}/${isPreview ? 'preview':'live'}` and can contain multiple GUID folders.
+---
 
-## Previous Implementation
+## 📌 Project Status
 
-We want to update any previous implementations of the file paths, if we can utilize the functions in the new versions of the file, we shuld opt to migrate to that usage. 
+We are modernizing the CLI:
 
-## Conventions
+- ✅ Replace legacy `src/index.ts` commands with prompt-driven interactions
+- 🔄 Migrate legacy commands to use the updated file and folder structure
+- ❗ Enforce strong typing and user-friendly developer experience via Inquirer
+- 🔍 Audit and deprecate custom logic that bypasses orchestration layer
 
-- All code must be strongly typed.
-- Do not allow `any` in TypeScript interfaces.
-- Always search for existing type interfaces before creating new ones
-- Do not re-write strongly typed interfaces without explicity asking first and waiting for a reply, this is generatly not a good idea anyways
-- Always prefer `async generators` for long-running processes (like sync).
-- Token storage must use `keytar`, not file-based systems.
+> Note: Some legacy commands may not fully use `.cursor/manifest.md`—this must be addressed.
 
-## Architecture
+---
 
-**Initialization**: `src/index.ts` contains all of the CLI commands and vargs.
-**Downaloders**: `src/lib/downloaders` These are responsible for downloading files from the source instances to the local file system using the pull operation, as well as when no source files are found. 
-**Finders**: `src/lib/finders` Finders job is to check for data in the local mappings, or the target instance. 
-**Getters**: `src/lib/getters` Getters retrieve the downloaded file contents for each of the content types.
-**Mappers**: `src/lib/mappers` When content and pages are uploaded to the target instance, we need to map things like the models and containers to the payloads because the ID's on the target instance won't match whats in the source instance. 
-**Pushers**:`src/lib/pushers` These are for pushing content into a target instance. 
-**Prompts**:`src/lib/prompts` These are Inquirer prompts meant to act as part of the orechestration layer.
-**Services**:`src/lib/services` These are the core services to handle different action sets within the CLI. These are largely inhereted from the first version of the CLI. 
-**Utilities**:`src/lib/utlities` These are generators for local filesystem utilities such generating a .env file, sitemap, typescript interfaces and react components.
+## 📁 Agility Files
 
+This CLI writes instance-based content to the local file system under:
 
+`~/agility-files/{guid}/{locale}/{preview|live}/`
 
-## Planning, Tracking and Execution 
-- Plan, track and execution all phases, tasks and courses of action in `.cursor/manifest.md` before doing any work on the codebase. 
-- Loop through these and update your completion as you go, if we get interupted using the prompt `resume generating` should begin where it last left off.
+Example:
 
+`~/agility-files/af9a3c91-4ca0-42db-bdb9-cced53a818d6/en-us/preview/`
 
+Each folder can hold content, sitemap data, TypeScript interfaces, and React components for a specific instance.
 
+---
+
+## 🧹 Legacy Migration Plan
+
+When working with older code:
+
+- Replace legacy file logic with new `lib/finders`, `lib/mappers`, or `lib/pushers`
+- Remove hard-coded file paths and migrate to reusable utilities
+- Avoid duplicating old `src/index.ts` logic—refactor into prompt workflows
+
+---
+
+## 📦 Folder Architecture Overview
+
+| Folder             | Responsibility                                                             |
+|--------------------|------------------------------------------------------------------------------|
+| `downloaders`      | Pull content/files from Agility into local cache                            |
+| `finders`          | Locate content in cache or remote instance                                  |
+| `getters`          | Retrieve and return local file contents                                     |
+| `mappers`          | Map model/container IDs from source to target instance                      |
+| `pushers`          | Push content/pages to a target instance                                     |
+| `prompts`          | Inquirer-based CLI prompts and user flows                                   |
+| `services`         | Core logic for SDK interactions, often inherited from earlier CLI versions  |
+| `utilities`        | Local generators: `.env`, sitemap, types, components, etc.                  |
+
+---
+
+## 📈 Planning, Tracking, and Execution
+
+Use the following files in `.cursor/` to track development progress:
+
+- `.cursor/manifest.md`:  
+  Plan features, break work into tasks, track progress  
+  → Use `resume generating` to continue an interrupted flow
+
+- `.cursor/gotchas.md`:  
+  Document technical quirks or confusing edge cases
+
+- `.cursor/failed-approaches.md`:  
+  Log ideas or implementations that didn’t work—avoid retesting
+
+- `.cursor/rules/project-settings.mdc`:  
+  This file—used to define expectations, architecture, and standards
+
+---
+
+## 📏 Developer Conventions
+
+- ✅ All code must be strongly typed
+- ❌ No usage of `any`—find or define types
+- 🔍 Search for existing types before creating new ones
+- ⚠️ Never overwrite existing interfaces without explicit discussion
+- ⏳ Prefer `async generators` for long-running operations (e.g., sync)
+- 🔐 Token storage must use `keytar` (never write tokens to file)
+
+---
+
+## 🔒 Type Safety Rules
+
+- No `as any`—raise ambiguity concerns in `.cursor/gotchas.md`
+- Use named interfaces over inline or anonymous types
+- Use `Record<string, T>` or equivalent instead of index signatures where possible
+
+---
+
+## 🧪 Testing & Debugging _(Optional)_
+
+If applicable:
+
+- Unit tests go in `/tests/`
+- Use real or mocked Agility API fixtures stored in `/fixtures/`
+- Do not commit hard-coded tokens or GUIDs
+
+---
+
+## 🧠 Cursor Execution Rule
+
+- Cursor must run shell commands **inline**, within the current context.
+- Do **not** prompt to open a detached Bash terminal unless explicitly requested.
+- This applies to `npm`, `npx`, `tsc`, `node`, `echo`, `mv`, `cp`, or any command in `scripts` or `lib/cli`.
+
+---
+
+## 🧠 Cursor Prompting & Debugging Behavior
+
+- Cursor should **not prompt the user** unless absolutely necessary.
+- In debugging or code inspection contexts:
+  - Proceed with common-sense default actions (e.g., add `console.log`, rerun the command, capture output).
+  - Automatically **iterate and retry** with minor instrumentation changes unless the user explicitly interrupts.
+- Only prompt if:
+  - There are destructive actions involved
+  - Multiple equally valid branches exist and user context is required
+  - Cursor encounters an ambiguous or unsafe state
+
+---
+
+## 🛠 Self-Improvement & Guardrails
+
+If you discover improvements to these settings, update this file:
+
+`.cursor/rules/project-settings.mdc`
+
+📌 And optionally log suggestions in `.cursor/manifest.md` as “DX Upgrades”.
+
+---

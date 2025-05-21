@@ -20,7 +20,7 @@ class Clean {
     this._selectedInstance = selectedInstance;
     this._locale = locale;
     this._guid = this._selectedInstance.guid;
-    this._websiteName = this._selectedInstance.websiteDetails.websiteName;
+    this._websiteName = this._selectedInstance.websiteDetails?.websiteName || "";
   }
 
   async cleanAll() {

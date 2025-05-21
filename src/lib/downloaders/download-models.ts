@@ -19,6 +19,7 @@ export async function downloadAllModels(
   const modelsFolderPath = path.join(basePath, "models");
   // let progressBar: cliProgress.SingleBar; // Old cli-progress bar, remove
 
+  console.log("modelsFolderPath", modelsFolderPath);
   if (forceOverwrite) {
     // REMOVE: fs.rmSync for deleting the folder
     // if (fs.existsSync(modelsFolderPath)) {

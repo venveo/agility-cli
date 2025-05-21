@@ -1,10 +1,12 @@
 import inquirer from "inquirer";
-import { forceDevMode, forceLocalMode } from "../..";
+import { forceDevMode, forceLocalMode, forcePreProdMode } from "../..";
 
 
 export async function getBaseURLfromGUID(guid: string): Promise<string> {
   let baseUrl = "https://mgmt.aglty.io";
-  if(forceDevMode) {
+  if(forcePreProdMode) {
+    baseUrl = "https://management-api-us-pre-prod.azurewebsites.net";
+  } else if(forceDevMode) {
     baseUrl = "https://mgmt-dev.aglty.io";
   } else if(forceLocalMode) {
     baseUrl = "http://localhost:5050";

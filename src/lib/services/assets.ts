@@ -133,9 +133,13 @@ export class assets {
       totalRecords = initialRecords.totalCount;
       if (this._progressCallback) this._progressCallback(totalSuccessfullyDownloaded, totalRecords, 'progress');
 
-      const basePath = this._legacyFolders ? this._rootPath : path.join(this._rootPath, guid, locale, isPreview ? "preview" : "live");
-      const assetsJsonPath = this._legacyFolders ? path.join(basePath, 'assets', 'json') : path.join(basePath, "assets", "json");
-      const assetsContentPath = this._legacyFolders ? path.join(basePath, 'assets') : path.join(basePath, "assets");
+      const instanceDataPath = this._rootPath;
+
+      const assetsRootWithinInstance = this._legacyFolders 
+        ? path.join(instanceDataPath, 'assets')
+        : path.join(instanceDataPath, "assets");
+
+      const assetsJsonPath = path.join(assetsRootWithinInstance, "json");
 
       fileExport.createFolder(assetsJsonPath);
 
@@ -162,7 +166,7 @@ export class assets {
         const filePath = this.getFilePath(originUrl);
         const folderPath = filePath.split("/").slice(0, -1).join("/");
         const fileName = `${assetMedia.fileName}`;
-        const assetDownloadPath = this._legacyFolders ? basePath : assetsContentPath;
+        const assetFileDownloadBase = assetsRootWithinInstance;
 
         if (this.isUrlProperlyEncoded(originUrl)) {
           this.unProcessedAssets[assetMediaID] = fileName;
@@ -170,7 +174,7 @@ export class assets {
           continue;
         }
 
-        const destinationFolderPath = folderPath ? path.join(assetDownloadPath, folderPath) : assetDownloadPath;
+        const destinationFolderPath = folderPath ? path.join(assetFileDownloadBase, folderPath) : assetFileDownloadBase;
         if (folderPath) {
           fileExport.createFolder(destinationFolderPath);
         }
@@ -214,7 +218,7 @@ export class assets {
             const filePath = this.getFilePath(originUrl);
             const folderPath = filePath.split("/").slice(0, -1).join("/");
             const fileName = `${assetMedia.fileName}`;
-            const assetDownloadPath = this._legacyFolders ? basePath : assetsContentPath;
+            const assetFileDownloadBase = assetsRootWithinInstance;
 
             if (this.isUrlProperlyEncoded(originUrl)) {
               this.unProcessedAssets[mediaID] = fileName;
@@ -222,7 +226,7 @@ export class assets {
               continue;
             }
 
-            const destinationFolderPath = folderPath ? path.join(assetDownloadPath, folderPath) : assetDownloadPath;
+            const destinationFolderPath = folderPath ? path.join(assetFileDownloadBase, folderPath) : assetFileDownloadBase;
             if (folderPath) {
               fileExport.createFolder(destinationFolderPath);
             }
