@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import * as mgmtApi from '@agility/management-sdk';
 import { fileOperations } from '../fileOperations';
 
@@ -31,7 +31,7 @@ export class ZodSchemaGenerator {
       hiddenField: z.boolean().nullable().optional(),
       fieldID: z.string().nullable().optional(),
       description: z.string().nullable().optional(),
-      settings: z.record(z.string()).default({}).optional(),
+      settings: z.record(z.string(), z.string()).default({}).optional(),
     })
     .passthrough(); // Allow additional field properties
 
@@ -235,6 +235,7 @@ export class ZodSchemaGenerator {
           if (model.referenceName) {
             this.modelsByReferenceName.set(model.referenceName, model);
           }
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
           // Use safeParse to get more details about what failed
           const parseResult = this.ModelSchema.safeParse(JSON.parse(fileContent));
@@ -276,6 +277,7 @@ export class ZodSchemaGenerator {
           if (container.referenceName) {
             this.containersByReferenceName.set(container.referenceName, container);
           }
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
           // Use safeParse to get more details about what failed
           const parseResult = this.ContainerSchema.safeParse(JSON.parse(fileContent));
@@ -355,7 +357,7 @@ export class ZodSchemaGenerator {
    * Generate Zod schemas for content items based on models
    */
   public generateContentZodSchemas(models: mgmtApi.Model[]): string {
-    let output = "import { z } from 'zod';\n\n";
+    let output = "import { z } from 'zod/v4';\n\n";
     output += '// Generated Zod schemas for Agility CMS content\n';
     output += '// Generated on: ' + new Date().toISOString() + '\n\n';
 

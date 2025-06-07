@@ -121,7 +121,7 @@ yargs.command({
     await command.execute({
       folder: argv.folder as string,
       output: argv.output as string,
-      format: argv.format as string,
+      format: argv.format as 'zod' | 'typescript' | 'both',
     });
   },
 });

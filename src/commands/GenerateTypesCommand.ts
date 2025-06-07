@@ -1,10 +1,16 @@
 import { BaseCommand } from '../base/BaseCommand';
 import { ZodSchemaGenerator } from '../services/ZodSchemaGenerator';
 import * as path from 'path';
-const colors = require('ansi-colors');
+import colors from 'ansi-colors';
+
+interface GenerateTypesArgv {
+  folder?: string;
+  output?: string;
+  format?: 'zod' | 'typescript' | 'both';
+}
 
 export class GenerateTypesCommand extends BaseCommand {
-  async execute(argv: any): Promise<void> {
+  async execute(argv: GenerateTypesArgv): Promise<void> {
     const sourceFolder = argv.folder || '.agility-files';
     const outputDir = argv.output || './generated-types';
     const format = argv.format || 'both'; // 'zod', 'typescript', or 'both'
