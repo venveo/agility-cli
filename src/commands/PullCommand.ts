@@ -21,7 +21,9 @@ export class PullCommand extends BaseCommand {
 
     if (!guid) {
       console.log(colors.red('❌ No instance GUID provided or stored.'));
-      console.log(colors.yellow('💡 Please run `agility login` first or provide --guid parameter.'));
+      console.log(
+        colors.yellow('💡 Please run `agility login` first or provide --guid parameter.')
+      );
       return;
     }
 

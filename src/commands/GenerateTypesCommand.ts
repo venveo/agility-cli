@@ -29,26 +29,36 @@ export class GenerateTypesCommand extends BaseCommand {
         console.log(colors.red('❌ No models found in the specified folder.'));
         console.log(colors.yellow('💡 To get started:'));
         console.log(colors.gray('  1. Run `agility login` to authenticate'));
-        console.log(colors.gray('  2. Run `agility pull --locale en-us --channel website` to download your instance data'));
+        console.log(
+          colors.gray(
+            '  2. Run `agility pull --locale en-us --channel website` to download your instance data'
+          )
+        );
         console.log(colors.gray('  3. Then run `agility generate-types` again'));
-        
+
         const inquirer = require('inquirer');
         const helpAnswer = await inquirer.prompt([
           {
             type: 'confirm',
             name: 'showPullHelp',
             message: 'Would you like to see the pull command options?',
-            default: true
-          }
+            default: true,
+          },
         ]);
 
         if (helpAnswer.showPullHelp) {
           console.log(colors.cyan('\n📖 Pull Command Usage:'));
-          console.log(colors.gray('  agility pull --locale <locale> --channel <channel> [--guid <guid>]'));
+          console.log(
+            colors.gray('  agility pull --locale <locale> --channel <channel> [--guid <guid>]')
+          );
           console.log(colors.gray('\n📋 Common Examples:'));
           console.log(colors.gray('  agility pull --locale en-us --channel website'));
-          console.log(colors.gray('  agility pull --locale en-us --channel website --guid your-instance-guid'));
-          console.log(colors.gray('\n💡 If you\'ve already logged in, the GUID will be used automatically.'));
+          console.log(
+            colors.gray('  agility pull --locale en-us --channel website --guid your-instance-guid')
+          );
+          console.log(
+            colors.gray("\n💡 If you've already logged in, the GUID will be used automatically.")
+          );
         }
 
         return;
@@ -57,10 +67,12 @@ export class GenerateTypesCommand extends BaseCommand {
       // Validate relationships
       console.log(colors.yellow('🔍 Validating model-container relationships...'));
       const validation = generator.validateModelContainerRelationships(models, containers);
-      
+
       // Show warnings if any
       if (validation.warnings.length > 0) {
-        console.log(colors.yellow(`⚠️  ${validation.warnings.length} warnings found (system fields):`));
+        console.log(
+          colors.yellow(`⚠️  ${validation.warnings.length} warnings found (system fields):`)
+        );
         if (validation.warnings.length <= 5) {
           validation.warnings.forEach(warning => {
             console.log(colors.yellow(`  • ${warning}`));
@@ -72,21 +84,21 @@ export class GenerateTypesCommand extends BaseCommand {
           console.log(colors.gray(`  ... and ${validation.warnings.length - 3} more`));
         }
       }
-      
+
       if (!validation.valid) {
         console.log(colors.red(`❌ ${validation.errors.length} validation errors found:`));
         validation.errors.forEach(error => {
           console.log(colors.red(`  • ${error}`));
         });
-        
+
         const inquirer = require('inquirer');
         const continueAnswer = await inquirer.prompt([
           {
             type: 'confirm',
             name: 'continue',
             message: 'Continue with type generation despite validation errors?',
-            default: false
-          }
+            default: false,
+          },
         ]);
 
         if (!continueAnswer.continue) {
@@ -140,7 +152,6 @@ export class GenerateTypesCommand extends BaseCommand {
       console.log(colors.gray(`  • Use the Zod schemas for runtime validation`));
       console.log(colors.gray(`  • Use the container mapping for type-safe queries`));
       console.log(colors.gray(`  • Check the summary report for detailed information`));
-
     } catch (error) {
       console.log(colors.red('❌ Type generation failed:'), error.message);
     }
@@ -161,7 +172,9 @@ Generated on: ${new Date().toISOString()}
 
 ## Models
 
-${models.map(model => `### ${model.displayName || model.referenceName}
+${models
+  .map(
+    model => `### ${model.displayName || model.referenceName}
 
 - **Reference Name**: \`${model.referenceName}\`
 - **Fields**: ${model.fields?.length || 0}
@@ -170,28 +183,36 @@ ${models.map(model => `### ${model.displayName || model.referenceName}
 
 **Fields:**
 ${model.fields?.map(field => `- \`${field.name}\` (${field.type}) - ${field.label || 'No label'}`).join('\n') || 'No fields'}
-`).join('\n')}
+`
+  )
+  .join('\n')}
 
 ## Containers
 
-${containers.map(container => `### ${container.title || container.referenceName}
+${containers
+  .map(
+    container => `### ${container.title || container.referenceName}
 
 - **Reference Name**: \`${container.referenceName}\`
 - **Model ID**: ${container.contentDefinitionID}
 - **Published**: ${container.isPublished ? 'Yes' : 'No'}
 - **Columns**: ${container.columns?.length || 0}
-`).join('\n')}
+`
+  )
+  .join('\n')}
 
 ## Validation Results
 
-${validation.valid ? 
-  '✅ All model-container relationships are valid.' : 
-  `❌ Validation errors found:\n\n${validation.errors.map(error => `- ${error}`).join('\n')}`
+${
+  validation.valid
+    ? '✅ All model-container relationships are valid.'
+    : `❌ Validation errors found:\n\n${validation.errors.map(error => `- ${error}`).join('\n')}`
 }
 
-${validation.warnings?.length > 0 ? 
-  `⚠️ Warnings (System Fields):\n\n${validation.warnings.map(warning => `- ${warning}`).join('\n')}\n\n*Note: These warnings indicate container columns that reference Agility CMS system fields (like state, createdDate, userName) which are automatically available on all content items.*` : 
-  ''
+${
+  validation.warnings?.length > 0
+    ? `⚠️ Warnings (System Fields):\n\n${validation.warnings.map(warning => `- ${warning}`).join('\n')}\n\n*Note: These warnings indicate container columns that reference Agility CMS system fields (like state, createdDate, userName) which are automatically available on all content items.*`
+    : ''
 }
 
 ## Generated Files
