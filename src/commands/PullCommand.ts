@@ -7,7 +7,7 @@ import { model } from '../model';
 const colors = require('ansi-colors');
 
 export interface PullCommandArgs {
-  guid: string;
+  guid?: string;
   locale: string;
   channel: string;
   baseUrl?: string;
@@ -15,7 +15,15 @@ export interface PullCommandArgs {
 
 export class PullCommand extends BaseCommand {
   async execute(argv: PullCommandArgs): Promise<void> {
-    const { guid, locale, channel, baseUrl } = argv;
+    // Use provided GUID or fall back to stored instance GUID
+    const guid = argv.guid || this.getStoredInstanceGuid();
+    const { locale, channel, baseUrl } = argv;
+
+    if (!guid) {
+      console.log(colors.red('❌ No instance GUID provided or stored.'));
+      console.log(colors.yellow('💡 Please run `agility login` first or provide --guid parameter.'));
+      return;
+    }
 
     await this.executeWithAuth(guid, async (token: string) => {
       this.context.fileOps.cleanup(this.context.config.getBaseFolder());

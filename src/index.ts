@@ -4,8 +4,20 @@ import * as yargs from 'yargs';
 import { LoginCommand } from './commands/LoginCommand';
 import { PullCommand } from './commands/PullCommand';
 import { PushCommand } from './commands/PushCommand';
+import { GenerateTypesCommand } from './commands/GenerateTypesCommand';
+import { StatusCommand } from './commands/StatusCommand';
 
 yargs.version('0.0.1_beta');
+
+// Status command
+yargs.command({
+  command: 'status',
+  describe: 'Show CLI authentication and data status.',
+  handler: async function () {
+    const command = new StatusCommand();
+    await command.execute();
+  },
+});
 
 // Login command
 yargs.command({
@@ -23,8 +35,8 @@ yargs.command({
   describe: 'Pull your Instance',
   builder: {
     guid: {
-      describe: 'Provide guid to pull your instance.',
-      demandOption: true,
+      describe: 'Provide guid to pull your instance (uses stored instance if omitted).',
+      demandOption: false,
       type: 'string',
     },
     locale: {
@@ -46,7 +58,7 @@ yargs.command({
   handler: async function (argv) {
     const command = new PullCommand();
     await command.execute({
-      guid: argv.guid as string,
+      guid: argv.guid as string | undefined,
       locale: argv.locale as string,
       channel: argv.channel as string,
       baseUrl: argv.baseUrl as string,
@@ -75,6 +87,41 @@ yargs.command({
     await command.execute({
       guid: argv.guid as string,
       locale: argv.locale as string,
+    });
+  },
+});
+
+// Generate types command
+yargs.command({
+  command: 'generate-types',
+  describe: 'Generate TypeScript types and Zod schemas from Agility models and containers.',
+  builder: {
+    folder: {
+      describe: 'Specify the source folder containing models and containers.',
+      demandOption: false,
+      type: 'string',
+      default: '.agility-files',
+    },
+    output: {
+      describe: 'Specify the output directory for generated types.',
+      demandOption: false,
+      type: 'string',
+      default: './generated-types',
+    },
+    format: {
+      describe: 'Specify the output format.',
+      demandOption: false,
+      type: 'string',
+      choices: ['typescript', 'zod', 'both'],
+      default: 'both',
+    },
+  },
+  handler: async function (argv) {
+    const command = new GenerateTypesCommand();
+    await command.execute({
+      folder: argv.folder as string,
+      output: argv.output as string,
+      format: argv.format as string,
     });
   },
 });

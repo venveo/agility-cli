@@ -15,6 +15,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `yarn format` - Format code with Prettier
 - `yarn format:check` - Check if code is properly formatted
 
+### Type Generation
+- `agility generate-types` - Generate TypeScript types and Zod schemas from models
+- `agility generate-types --format typescript` - Generate only TypeScript interfaces
+- `agility generate-types --format zod` - Generate only Zod schemas
+- `agility generate-types --output ./types` - Specify custom output directory
+
 ### CLI Testing
 - Install locally: `npm link` or `yarn link` to test CLI commands
 - Global install: `npm i @agility/cli -g` or `yarn global add @agility/cli`
@@ -44,10 +50,14 @@ The CLI follows a **phased deployment pattern**:
 - **FileOperations** (`src/fileOperations.ts`) - File system operations and JSON serialization
 - **ModelSync** (`src/modelSync.ts`) - Model-specific synchronization operations
 
+#### Services
+- **ZodSchemaGenerator** (`src/services/ZodSchemaGenerator.ts`) - Generates TypeScript types and Zod schemas from Agility models and containers
+
 #### Command Layer
-- **LoginCommand** (`src/commands/LoginCommand.ts`) - Handles user authentication
+- **LoginCommand** (`src/commands/LoginCommand.ts`) - Handles user authentication with instance validation
 - **PullCommand** (`src/commands/PullCommand.ts`) - Implements instance pull functionality
 - **PushCommand** (`src/commands/PushCommand.ts`) - Implements instance push functionality
+- **GenerateTypesCommand** (`src/commands/GenerateTypesCommand.ts`) - Generates TypeScript types and Zod schemas
 
 ### Data Flow and Dependencies
 

@@ -36,3 +36,4 @@ yarn-error.log*
 .vscode
 .yarn
 .claude/settings.local.json
+generated-types/*
