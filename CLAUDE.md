@@ -9,6 +9,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `tsc` - Direct TypeScript compilation
 - `yarn prepare` - Runs build automatically before publishing
 
+### Code Quality
+- `yarn lint` - Run ESLint to check for code issues
+- `yarn lint:fix` - Auto-fix linting issues where possible
+- `yarn format` - Format code with Prettier
+- `yarn format:check` - Check if code is properly formatted
+
 ### CLI Testing
 - Install locally: `npm link` or `yarn link` to test CLI commands
 - Global install: `npm i @agility/cli -g` or `yarn global add @agility/cli`
@@ -26,12 +32,22 @@ The CLI follows a **phased deployment pattern**:
 
 ### Key Classes and Responsibilities
 
+#### Core Infrastructure
+- **BaseCommand** (`src/base/BaseCommand.ts`) - Base class for all CLI commands with shared authentication and validation
+- **ConfigService** (`src/config.ts`) - Centralized configuration management for API endpoints and settings
+
+#### Business Logic
 - **Auth** (`src/auth.ts`) - OAuth flow, user permissions, multi-region API endpoints
 - **Sync** (`src/sync.ts`) - Downloads content using Agility content-sync SDK
 - **Push** (`src/push.ts`) - Complex deployment logic with dependency resolution and ID mapping
 - **Model** (`src/model.ts`) - Content model operations and validation
 - **FileOperations** (`src/fileOperations.ts`) - File system operations and JSON serialization
 - **ModelSync** (`src/modelSync.ts`) - Model-specific synchronization operations
+
+#### Command Layer
+- **LoginCommand** (`src/commands/LoginCommand.ts`) - Handles user authentication
+- **PullCommand** (`src/commands/PullCommand.ts`) - Implements instance pull functionality
+- **PushCommand** (`src/commands/PushCommand.ts`) - Implements instance push functionality
 
 ### Data Flow and Dependencies
 
