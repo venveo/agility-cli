@@ -29,18 +29,30 @@ export abstract class BaseCommand {
     };
   }
 
-  protected async authenticate(guid: string): Promise<cliToken | null> {
+  protected getStoredInstanceGuid(): string | null {
+    try {
+      const instanceData = JSON.parse(this.context.fileOps.readTempFile('instance.json'));
+      return instanceData.guid;
+    } catch {
+      return null;
+    }
+  }
+
+  protected async authenticate(guid?: string): Promise<cliToken | null> {
     const codeFileStatus = this.context.fileOps.codeFileExists();
     if (!codeFileStatus) {
       console.log(colors.red('Please authenticate first to perform this operation.'));
       return null;
     }
 
+    // Use provided guid or fall back to stored instance guid
+    const targetGuid = guid || this.getStoredInstanceGuid() || 'blank-d';
+
     const data = JSON.parse(this.context.fileOps.readTempFile('code.json'));
     const form = new FormData();
     form.append('cliCode', data.code);
 
-    return await this.context.auth.cliPoll(form, guid);
+    return await this.context.auth.cliPoll(form, targetGuid);
   }
 
   protected async validateUserPermissions(guid: string, token: string): Promise<boolean> {

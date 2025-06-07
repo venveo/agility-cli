@@ -40,6 +40,7 @@ export class Auth {
     const baseURL = 'https://mgmt.aglty.io';
     const instance = axios.create({
       baseURL: `${baseURL}/oauth`,
+      timeout: 30000, // 30 second timeout
     });
     return instance;
   }
@@ -84,8 +85,16 @@ export class Auth {
 
   async cliPoll(formData: FormData, guid: string = 'blank-d') {
     const apiPath = `CliPoll`;
-    const response = await this.executePost(apiPath, guid, formData);
-    return response.data as cliToken;
+    try {
+      const response = await this.executePost(apiPath, guid, formData);
+      return response.data as cliToken;
+    } catch (error) {
+      // If we get a 404 or similar, the authentication might not be ready yet
+      if (error.response && error.response.status === 404) {
+        throw new Error('Authentication not ready');
+      }
+      throw error;
+    }
   }
 
   async getPreviewKey(guid: string, userBaseUrl: string = null) {
