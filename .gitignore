@@ -32,3 +32,6 @@ yarn-error.log*
 
 # ignore tailwind styles
 /src/styles.css
+
+.vscode
+.yarn
