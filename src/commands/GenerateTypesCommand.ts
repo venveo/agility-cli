@@ -120,6 +120,13 @@ export class GenerateTypesCommand extends BaseCommand {
         console.log(colors.green(`✅ Zod schemas written to: ${schemasPath}`));
       }
 
+      // Generate container-to-content-type mapping
+      console.log(colors.yellow('🗺️  Generating container type mapping...'));
+      const containerMapping = generator.generateContainerTypeMapping(models, containers);
+      const mappingPath = path.join(outputDir, 'container-mapping.ts');
+      this.context.fileOps.createFile(mappingPath, containerMapping);
+      console.log(colors.green(`✅ Container mapping written to: ${mappingPath}`));
+
       // Generate summary report
       console.log(colors.yellow('📊 Generating summary report...'));
       const summaryReport = this.generateSummaryReport(models, containers, validation);
@@ -131,6 +138,7 @@ export class GenerateTypesCommand extends BaseCommand {
       console.log(colors.cyan('💡 Next steps:'));
       console.log(colors.gray(`  • Import the generated types in your application`));
       console.log(colors.gray(`  • Use the Zod schemas for runtime validation`));
+      console.log(colors.gray(`  • Use the container mapping for type-safe queries`));
       console.log(colors.gray(`  • Check the summary report for detailed information`));
 
     } catch (error) {
@@ -189,7 +197,8 @@ ${validation.warnings?.length > 0 ?
 ## Generated Files
 
 - \`content-types.ts\` - TypeScript interface definitions
-- \`content-schemas.ts\` - Zod schema definitions
+- \`content-schemas.ts\` - Zod schema definitions  
+- \`container-mapping.ts\` - Container-to-content-type mapping
 - \`generation-report.md\` - This report
 
 ## Usage Examples
@@ -220,6 +229,27 @@ if (result.success) {
   // result.data is typed as BlogPostContent
   console.log(result.data.title);
 }
+\`\`\`
+
+### Container Type Mapping
+
+\`\`\`typescript
+import { ContainerTypeMapping, getContainerContentType } from './container-mapping';
+
+// Get the content type for a specific container
+const contentType = getContainerContentType('BlogPosts'); // Returns "BlogPostContent"
+
+// Use in API queries with type safety
+async function getContainerData<T extends keyof typeof ContainerTypeMapping>(
+  containerRef: T
+): Promise<ContainerContentType<T>[]> {
+  // Your API call here - the return type is automatically inferred
+  const response = await fetch(\`/api/containers/\${containerRef}\`);
+  return response.json();
+}
+
+// Usage
+const blogPosts = await getContainerData('BlogPosts'); // Type: BlogPostContent[]
 \`\`\`
 `;
 

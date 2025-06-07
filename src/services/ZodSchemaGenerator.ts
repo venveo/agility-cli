@@ -4,10 +4,19 @@ import { fileOperations } from '../fileOperations';
 
 export class ZodSchemaGenerator {
   private fileOps: fileOperations;
+  private modelsByReferenceName: Map<string, mgmtApi.Model> = new Map();
+  private containersByReferenceName: Map<string, mgmtApi.Container> = new Map();
 
   constructor() {
     this.fileOps = new fileOperations();
   }
+
+  // Common type definitions
+  private readonly commonTypes = {
+    Image: 'z.object({ url: z.string(), fileName: z.string(), altText: z.string().optional() })',
+    File: 'z.object({ url: z.string(), fileName: z.string(), fileSize: z.number().optional() })',
+    Link: 'z.object({ href: z.string(), target: z.string().optional(), text: z.string().optional() })',
+  };
 
   // Base Zod schemas for Agility CMS structures
   private readonly ModelFieldBaseSchema = z.object({
@@ -24,6 +33,47 @@ export class ZodSchemaGenerator {
     settings: z.record(z.string()).default({}).optional(),
   }).passthrough(); // Allow additional field properties
 
+  // All supported Agility field type schemas
+  private readonly TextFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Text'),
+  });
+
+  private readonly MultiLineTextFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('MultiLineText'),
+  });
+
+  private readonly HTMLFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('HTML'),
+  });
+
+  private readonly DropdownFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Dropdown'),
+  });
+
+  private readonly URLFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('URL'),
+  });
+
+  private readonly LinkFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Link'),
+  });
+
+  private readonly NumberFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Number'),
+  });
+
+  private readonly DecimalFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Decimal'),
+  });
+
+  private readonly DateTimeFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('DateTime'),
+  });
+
+  private readonly BooleanFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Boolean'),
+  });
+
   private readonly ContentFieldSchema = this.ModelFieldBaseSchema.extend({
     type: z.literal('Content'),
     settings: z.object({
@@ -31,19 +81,29 @@ export class ZodSchemaGenerator {
       ContentView: z.string().optional(),
       LinkeContentDropdownValueField: z.string().optional(),
       SortIDFieldName: z.string().optional(),
+      LinkedContentType: z.string().optional(),
+      SharedContent: z.string().optional(),
     }).passthrough(),
   });
 
-  private readonly TextFieldSchema = this.ModelFieldBaseSchema.extend({
-    type: z.literal('Text'),
+  private readonly HiddenFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Hidden'),
   });
 
-  private readonly NumberFieldSchema = this.ModelFieldBaseSchema.extend({
-    type: z.literal('Number'),
+  private readonly CustomFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('Custom'),
+  });
+
+  private readonly CustomSectionFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('CustomSection'),
   });
 
   private readonly ImageAttachmentFieldSchema = this.ModelFieldBaseSchema.extend({
     type: z.literal('ImageAttachment'),
+  });
+
+  private readonly PhotoGalleryFieldSchema = this.ModelFieldBaseSchema.extend({
+    type: z.literal('PhotoGallery'),
   });
 
   private readonly FileAttachmentFieldSchema = this.ModelFieldBaseSchema.extend({
@@ -54,18 +114,25 @@ export class ZodSchemaGenerator {
     type: z.literal('AttachmentList'),
   });
 
-  private readonly PhotoGalleryFieldSchema = this.ModelFieldBaseSchema.extend({
-    type: z.literal('PhotoGallery'),
-  });
-
   private readonly ModelFieldSchema = z.union([
-    this.ContentFieldSchema,
     this.TextFieldSchema,
+    this.MultiLineTextFieldSchema,
+    this.HTMLFieldSchema,
+    this.DropdownFieldSchema,
+    this.URLFieldSchema,
+    this.LinkFieldSchema,
     this.NumberFieldSchema,
+    this.DecimalFieldSchema,
+    this.DateTimeFieldSchema,
+    this.BooleanFieldSchema,
+    this.ContentFieldSchema,
+    this.HiddenFieldSchema,
+    this.CustomFieldSchema,
+    this.CustomSectionFieldSchema,
     this.ImageAttachmentFieldSchema,
+    this.PhotoGalleryFieldSchema,
     this.FileAttachmentFieldSchema,
     this.AttachmentListFieldSchema,
-    this.PhotoGalleryFieldSchema,
     // Fallback for any other field types
     this.ModelFieldBaseSchema.extend({
       type: z.string().nullable().optional(),
@@ -151,7 +218,13 @@ export class ZodSchemaGenerator {
         try {
           const modelData = JSON.parse(fileContent);
           const validatedModel = this.ModelSchema.parse(modelData);
-          models.push(validatedModel as unknown as mgmtApi.Model);
+          const model = validatedModel as unknown as mgmtApi.Model;
+          models.push(model);
+          
+          // Store in lookup map for nested content resolution
+          if (model.referenceName) {
+            this.modelsByReferenceName.set(model.referenceName, model);
+          }
         } catch (error) {
           // Use safeParse to get more details about what failed
           const parseResult = this.ModelSchema.safeParse(JSON.parse(fileContent));
@@ -184,7 +257,13 @@ export class ZodSchemaGenerator {
         try {
           const containerData = JSON.parse(fileContent);
           const validatedContainer = this.ContainerSchema.parse(containerData);
-          containers.push(validatedContainer as unknown as mgmtApi.Container);
+          const container = validatedContainer as unknown as mgmtApi.Container;
+          containers.push(container);
+          
+          // Store in lookup map for container-to-content-type mapping
+          if (container.referenceName) {
+            this.containersByReferenceName.set(container.referenceName, container);
+          }
         } catch (error) {
           // Use safeParse to get more details about what failed
           const parseResult = this.ContainerSchema.safeParse(JSON.parse(fileContent));
@@ -211,6 +290,26 @@ export class ZodSchemaGenerator {
   public generateContentTypeInterfaces(models: mgmtApi.Model[]): string {
     let output = '// Generated TypeScript interfaces for Agility CMS content\n';
     output += '// Generated on: ' + new Date().toISOString() + '\n\n';
+
+    // Add common type definitions
+    output += '// Common Agility CMS types\n';
+    output += 'export interface AgilityImage {\n';
+    output += '  url: string;\n';
+    output += '  fileName: string;\n';
+    output += '  altText?: string;\n';
+    output += '}\n\n';
+    
+    output += 'export interface AgilityFile {\n';
+    output += '  url: string;\n';
+    output += '  fileName: string;\n';
+    output += '  fileSize?: number;\n';
+    output += '}\n\n';
+    
+    output += 'export interface AgilityLink {\n';
+    output += '  href: string;\n';
+    output += '  target?: string;\n';
+    output += '  text?: string;\n';
+    output += '}\n\n';
 
     for (const model of models) {
       if (!model.referenceName || !model.fields) continue;
@@ -245,6 +344,26 @@ export class ZodSchemaGenerator {
     let output = "import { z } from 'zod';\n\n";
     output += '// Generated Zod schemas for Agility CMS content\n';
     output += '// Generated on: ' + new Date().toISOString() + '\n\n';
+
+    // Add common schema definitions
+    output += '// Common Agility CMS schemas\n';
+    output += 'export const AgilityImageSchema = z.object({\n';
+    output += '  url: z.string(),\n';
+    output += '  fileName: z.string(),\n';
+    output += '  altText: z.string().optional(),\n';
+    output += '});\n\n';
+    
+    output += 'export const AgilityFileSchema = z.object({\n';
+    output += '  url: z.string(),\n';
+    output += '  fileName: z.string(),\n';
+    output += '  fileSize: z.number().optional(),\n';
+    output += '});\n\n';
+    
+    output += 'export const AgilityLinkSchema = z.object({\n';
+    output += '  href: z.string(),\n';
+    output += '  target: z.string().optional(),\n';
+    output += '  text: z.string().optional(),\n';
+    output += '});\n\n';
 
     for (const model of models) {
       if (!model.referenceName || !model.fields) continue;
@@ -341,18 +460,36 @@ export class ZodSchemaGenerator {
   private getTypeScriptType(field: mgmtApi.ModelField): string {
     switch (field.type) {
       case 'Text':
+      case 'MultiLineText':
+      case 'HTML':
+      case 'URL':
         return 'string';
+      case 'Dropdown':
+        return 'string'; // Could be enhanced to use union types based on settings
+      case 'Link':
+        return 'AgilityLink';
       case 'Number':
+      case 'Decimal':
         return 'number';
+      case 'DateTime':
+        return 'string'; // ISO string
+      case 'Boolean':
+        return 'boolean';
       case 'Content':
-        return 'string | string[]'; // Can be single reference or array
+        // Improved: Try to resolve the actual content type
+        return this.resolveContentFieldType(field);
+      case 'Hidden':
+      case 'Custom':
+      case 'CustomSection':
+        return 'any';
       case 'ImageAttachment':
+        return 'AgilityImage';
       case 'FileAttachment':
-        return '{ url: string; fileName: string; }';
+        return 'AgilityFile';
       case 'AttachmentList':
-        return '{ url: string; fileName: string; }[]';
+        return 'AgilityFile[]';
       case 'PhotoGallery':
-        return 'string'; // Gallery ID
+        return 'AgilityImage[]';
       default:
         return 'any';
     }
@@ -361,20 +498,125 @@ export class ZodSchemaGenerator {
   private getZodType(field: mgmtApi.ModelField): string {
     switch (field.type) {
       case 'Text':
+      case 'MultiLineText':
+      case 'HTML':
+      case 'URL':
         return 'z.string()';
+      case 'Dropdown':
+        return 'z.string()'; // Could be enhanced to use enum based on settings
+      case 'Link':
+        return 'AgilityLinkSchema';
       case 'Number':
+      case 'Decimal':
         return 'z.number()';
+      case 'DateTime':
+        return 'z.string()'; // ISO string
+      case 'Boolean':
+        return 'z.boolean()';
       case 'Content':
-        return 'z.union([z.string(), z.array(z.string())])'; // Single or array
+        // Improved: Try to resolve the actual content type
+        return this.resolveContentFieldZodType(field);
+      case 'Hidden':
+      case 'Custom':
+      case 'CustomSection':
+        return 'z.any()';
       case 'ImageAttachment':
+        return 'AgilityImageSchema';
       case 'FileAttachment':
-        return 'z.object({ url: z.string(), fileName: z.string() })';
+        return 'AgilityFileSchema';
       case 'AttachmentList':
-        return 'z.array(z.object({ url: z.string(), fileName: z.string() }))';
+        return 'z.array(AgilityFileSchema)';
       case 'PhotoGallery':
-        return 'z.string()'; // Gallery ID
+        return 'z.array(AgilityImageSchema)';
       default:
         return 'z.any()';
     }
+  }
+
+  /**
+   * Resolve Content field type to specific content type if possible
+   */
+  private resolveContentFieldType(field: mgmtApi.ModelField): string {
+    const settings = field.settings;
+    if (settings && settings.ContentDefinition) {
+      const referencedModel = this.modelsByReferenceName.get(settings.ContentDefinition);
+      if (referencedModel) {
+        const typeName = this.pascalCase(referencedModel.referenceName) + 'Content';
+        // Check if it's a single or array based on settings
+        const isArray = settings.LinkedContentType === 'list' || settings.Sort;
+        return isArray ? `${typeName}[]` : typeName;
+      }
+    }
+    // Fallback to generic content reference
+    return 'string | string[]';
+  }
+
+  /**
+   * Resolve Content field Zod type to specific content schema if possible
+   */
+  private resolveContentFieldZodType(field: mgmtApi.ModelField): string {
+    const settings = field.settings;
+    if (settings && settings.ContentDefinition) {
+      const referencedModel = this.modelsByReferenceName.get(settings.ContentDefinition);
+      if (referencedModel) {
+        const schemaName = this.pascalCase(referencedModel.referenceName) + 'ContentSchema';
+        // Check if it's a single or array based on settings
+        const isArray = settings.LinkedContentType === 'list' || settings.Sort;
+        return isArray ? `z.array(${schemaName})` : schemaName;
+      }
+    }
+    // Fallback to generic content reference
+    return 'z.union([z.string(), z.array(z.string())])';
+  }
+
+  /**
+   * Generate container-to-content-type mapping
+   */
+  public generateContainerTypeMapping(models: mgmtApi.Model[], containers: mgmtApi.Container[]): string {
+    let output = '// Generated container-to-content-type mapping for Agility CMS\n';
+    output += '// Generated on: ' + new Date().toISOString() + '\n\n';
+
+    // Create mapping of model ID to model reference name
+    const modelIdToReference = new Map<number, string>();
+    for (const model of models) {
+      if (model.id && model.referenceName) {
+        modelIdToReference.set(model.id, model.referenceName);
+      }
+    }
+
+    output += 'export const ContainerTypeMapping = {\n';
+    
+    for (const container of containers) {
+      if (!container.referenceName || !container.contentDefinitionID) continue;
+      
+      const modelReference = modelIdToReference.get(container.contentDefinitionID);
+      if (modelReference) {
+        const typeName = this.pascalCase(modelReference) + 'Content';
+        output += `  "${container.referenceName}": "${typeName}",\n`;
+      }
+    }
+    
+    output += '} as const;\n\n';
+    
+    // Generate helper type for container queries
+    output += 'export type ContainerContentType<T extends keyof typeof ContainerTypeMapping> = {\n';
+    output += '  [K in T]: typeof ContainerTypeMapping[K] extends infer U\n';
+    output += '    ? U extends string\n';
+    output += '      ? U\n';
+    output += '      : never\n';
+    output += '    : never\n';
+    output += '}[T];\n\n';
+
+    // Generate lookup function
+    output += '/**\n';
+    output += ' * Get the content type for a given container reference name\n';
+    output += ' */\n';
+    output += 'export function getContainerContentType<T extends keyof typeof ContainerTypeMapping>(\n';
+    output += '  containerRef: T\n';
+    output += '): ContainerContentType<T> {\n';
+    output += '  return ContainerTypeMapping[containerRef] as ContainerContentType<T>;\n';
+    output += '}\n\n';
+
+    return output;
   }
 }
