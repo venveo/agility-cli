@@ -365,10 +365,17 @@ export class ZodSchemaGenerator {
     output += '  text: z.string().optional(),\n';
     output += '});\n\n';
 
+    // Export the inferred types from schemas
+    output += 'export type AgilityImage = z.infer<typeof AgilityImageSchema>;\n';
+    output += 'export type AgilityFile = z.infer<typeof AgilityFileSchema>;\n';
+    output += 'export type AgilityLink = z.infer<typeof AgilityLinkSchema>;\n\n';
+
+    // Generate content schemas with proper forward declarations
     for (const model of models) {
       if (!model.referenceName || !model.fields) continue;
 
       const schemaName = this.pascalCase(model.referenceName) + 'ContentSchema';
+      
       output += `// Model: ${model.displayName || model.referenceName}\n`;
       output += `export const ${schemaName} = z.object({\n`;
 
@@ -560,13 +567,56 @@ export class ZodSchemaGenerator {
       const referencedModel = this.modelsByReferenceName.get(settings.ContentDefinition);
       if (referencedModel) {
         const schemaName = this.pascalCase(referencedModel.referenceName) + 'ContentSchema';
+        // Use z.lazy() for forward references to avoid circular dependency issues
+        const lazySchema = `z.lazy(() => ${schemaName})`;
         // Check if it's a single or array based on settings
         const isArray = settings.LinkedContentType === 'list' || settings.Sort;
-        return isArray ? `z.array(${schemaName})` : schemaName;
+        return isArray ? `z.array(${lazySchema})` : lazySchema;
       }
     }
     // Fallback to generic content reference
     return 'z.union([z.string(), z.array(z.string())])';
+  }
+
+  /**
+   * Get Zod type for lazy evaluation (inside z.lazy())
+   */
+  private getZodTypeForLazy(field: mgmtApi.ModelField): string {
+    switch (field.type) {
+      case 'Text':
+      case 'MultiLineText':
+      case 'HTML':
+      case 'URL':
+        return 'z.string()';
+      case 'Dropdown':
+        return 'z.string()'; // Could be enhanced to use enum based on settings
+      case 'Link':
+        return 'AgilityLinkSchema';
+      case 'Number':
+      case 'Decimal':
+        return 'z.number()';
+      case 'DateTime':
+        return 'z.string()'; // ISO string
+      case 'Boolean':
+        return 'z.boolean()';
+      case 'Content':
+        // For lazy evaluation, use the schema directly since all schemas are available
+        return this.resolveContentFieldZodType(field);
+      case 'Hidden':
+      case 'Custom':
+      case 'CustomSection':
+        return 'z.any()';
+      case 'ImageAttachment':
+        return 'AgilityImageSchema';
+      case 'FileAttachment':
+        return 'AgilityFileSchema';
+      case 'AttachmentList':
+        return 'z.array(AgilityFileSchema)';
+      case 'PhotoGallery':
+        return 'z.array(AgilityImageSchema)';
+      default:
+        return 'z.any()';
+    }
   }
 
   /**
