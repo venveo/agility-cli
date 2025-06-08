@@ -12,8 +12,13 @@
   "homepage": "https://github.com/agility/agility-cli#readme",
   "main": "dist/index.js",
   "scripts": {
+    "clean": "rm -rf dist/",
+    "prebuild": "yarn clean",
     "build": "tsc",
     "prepare": "yarn build",
+    "generate-types": "node dist/index.js generate-types",
+    "generate-types:dev": "yarn build && yarn generate-types",
+    "dev": "yarn build && yarn generate-types:dev",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
