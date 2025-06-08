@@ -167,6 +167,19 @@ describe('ZodSchemaGenerator', () => {
       expect(schemas).toContain('export const BlogPostContentDepth2Schema');
     });
 
+    it('should generate generic types with depth parameter for Zod schemas', () => {
+      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const schemas = generator.generateContentZodSchemas(models);
+
+      // Check that the main type export includes the generic depth parameter
+      expect(schemas).toContain('export type BlogPostContent<D extends ContentLinkDepth = 1>');
+      // Check that specific depth types are also generated
+      expect(schemas).toContain('export type BlogPostContentDepth0');
+      expect(schemas).toContain('export type BlogPostContentDepth2');
+      // Verify the generic type uses the factory with proper type inference
+      expect(schemas).toContain('z.infer<ReturnType<typeof BlogPostContentSchemaFactory<z.ZodLiteral<D>>>>');
+    });
+
     it('should include common Zod schemas', () => {
       const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
       const schemas = generator.generateContentZodSchemas(models);

@@ -248,7 +248,7 @@ export class ZodSchemaGenerator {
                 `   Issues: ${parseResult.error.issues.map(i => `${i.path.join('.')} ${i.message}`).join(', ')}`
               );
             }
-          } catch (jsonError) {
+          } catch {
             // JSON parsing failed
             console.warn(`   JSON parsing error`);
           }
@@ -294,7 +294,7 @@ export class ZodSchemaGenerator {
                 `   Issues: ${parseResult.error.issues.map(i => `${i.path.join('.')} ${i.message}`).join(', ')}`
               );
             }
-          } catch (jsonError) {
+          } catch {
             // JSON parsing failed
             console.warn(`   JSON parsing error`);
           }
@@ -551,8 +551,8 @@ export class ZodSchemaGenerator {
       output += `export const ${this.pascalCase(model.referenceName)}ContentDepth0Schema = ${factoryName}(z.literal(0));\n`;
       output += `export const ${this.pascalCase(model.referenceName)}ContentDepth2Schema = ${factoryName}(z.literal(2));\n\n`;
 
-      // Export inferred types
-      output += `export type ${interfaceName} = z.infer<typeof ${this.pascalCase(model.referenceName)}ContentSchema>;\n`;
+      // Export inferred types with generic depth parameter
+      output += `export type ${interfaceName}<D extends ContentLinkDepth = 1> = z.infer<ReturnType<typeof ${factoryName}<z.ZodLiteral<D>>>>;\n`;
       output += `export type ${interfaceName}Depth0 = z.infer<typeof ${this.pascalCase(model.referenceName)}ContentDepth0Schema>;\n`;
       output += `export type ${interfaceName}Depth2 = z.infer<typeof ${this.pascalCase(model.referenceName)}ContentDepth2Schema>;\n\n`;
     }
