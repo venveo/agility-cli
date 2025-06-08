@@ -10,5 +10,10 @@
 	  "esModuleInterop": true,
 	  "skipLibCheck": true,
 	  "allowSyntheticDefaultImports": true
-	}
+	},
+	"exclude": [
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"test-basic.js"
+	]
   }

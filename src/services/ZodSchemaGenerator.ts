@@ -237,16 +237,20 @@ export class ZodSchemaGenerator {
           }
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
-          // Use safeParse to get more details about what failed
-          const parseResult = this.ModelSchema.safeParse(JSON.parse(fileContent));
-          if (!parseResult.success) {
-            console.warn(`⚠️  Skipping invalid model file - validation failed`);
-            // Only show details if we're in verbose mode or there are very few errors
-            if (parseResult.error.issues.length <= 3) {
+          console.warn(`⚠️  Skipping invalid model file - validation failed`);
+          // Try to parse JSON first to see if it's a JSON parsing error or validation error
+          try {
+            const modelData = JSON.parse(fileContent);
+            // If JSON parsing succeeds, it's a validation error
+            const parseResult = this.ModelSchema.safeParse(modelData);
+            if (!parseResult.success && parseResult.error.issues.length <= 3) {
               console.warn(
                 `   Issues: ${parseResult.error.issues.map(i => `${i.path.join('.')} ${i.message}`).join(', ')}`
               );
             }
+          } catch (jsonError) {
+            // JSON parsing failed
+            console.warn(`   JSON parsing error`);
           }
         }
       }
@@ -279,16 +283,20 @@ export class ZodSchemaGenerator {
           }
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
-          // Use safeParse to get more details about what failed
-          const parseResult = this.ContainerSchema.safeParse(JSON.parse(fileContent));
-          if (!parseResult.success) {
-            console.warn(`⚠️  Skipping invalid container file - validation failed`);
-            // Only show details if we're in verbose mode or there are very few errors
-            if (parseResult.error.issues.length <= 3) {
+          console.warn(`⚠️  Skipping invalid container file - validation failed`);
+          // Try to parse JSON first to see if it's a JSON parsing error or validation error
+          try {
+            const containerData = JSON.parse(fileContent);
+            // If JSON parsing succeeds, it's a validation error
+            const parseResult = this.ContainerSchema.safeParse(containerData);
+            if (!parseResult.success && parseResult.error.issues.length <= 3) {
               console.warn(
                 `   Issues: ${parseResult.error.issues.map(i => `${i.path.join('.')} ${i.message}`).join(', ')}`
               );
             }
+          } catch (jsonError) {
+            // JSON parsing failed
+            console.warn(`   JSON parsing error`);
           }
         }
       }
@@ -449,7 +457,8 @@ export class ZodSchemaGenerator {
     output += '  fulllist: z.boolean().optional(),\n';
     output += '});\n\n';
 
-    output += 'export const AgilityContentItemSchema = <T extends z.ZodTypeAny>(fieldsSchema: T) => z.object({\n';
+    output +=
+      'export const AgilityContentItemSchema = <T extends z.ZodTypeAny>(fieldsSchema: T) => z.object({\n';
     output += '  contentID: z.number(),\n';
     output += '  properties: z.object({\n';
     output += '    state: z.number(),\n';
@@ -883,9 +892,9 @@ export class ZodSchemaGenerator {
    */
   private generateContentDepthUtilityTypes(): string {
     let output = '// Content depth utility types for modeling ContentLinkDepth behavior\n';
-    
+
     output += 'export type ContentLinkDepth = 0 | 1 | 2 | 3 | 4 | 5;\n\n';
-    
+
     output += '/**\n';
     output += ' * Models how content fields behave at different depths\n';
     output += ' * - Depth 0: Always returns AgilityContentReference\n';
@@ -894,12 +903,12 @@ export class ZodSchemaGenerator {
     output += 'export type ContentFieldAtDepth<TContent, D extends ContentLinkDepth> = \n';
     output += '  D extends 0 ? AgilityContentReference : \n';
     output += '  (AgilityContentItem<TContent> | AgilityContentReference);\n\n';
-    
+
     output += 'export type ContentArrayFieldAtDepth<TContent, D extends ContentLinkDepth> = \n';
     output += '  D extends 0 ? AgilityContentReference[] : \n';
     output += '  D extends 1 ? (AgilityContentItem<TContent>[] | AgilityContentReference[]) : \n';
     output += '  AgilityContentItem<TContent>[]; // At depth 2+, content is fully expanded\n\n';
-    
+
     return output;
   }
 
@@ -992,19 +1001,20 @@ export class ZodSchemaGenerator {
       const referencedModel = this.modelsByReferenceName.get(settings.ContentDefinition);
       if (referencedModel) {
         const typeName = this.pascalCase(referencedModel.referenceName) + 'Content<D>';
-        
+
         // More comprehensive array detection
-        const isArray = settings.LinkedContentType === 'list' || 
-                       settings.Sort || 
-                       settings.SortIDFieldName || // Has sorting = multiple items
-                       settings.RenderAs === 'grid' || // Grid rendering = multiple items
-                       settings.RenderAs === 'searchlistbox' || // Search list box = multiple items
-                       settings.LinkedContentNestedTypeID === '1' || // Nested content type 1 = array
-                       settings.SharedContent === 'true' ||
-                       field.name?.toLowerCase().includes('list') ||
-                       field.name?.toLowerCase().includes('items') ||
-                       field.name?.toLowerCase().includes('products');
-        
+        const isArray =
+          settings.LinkedContentType === 'list' ||
+          settings.Sort ||
+          settings.SortIDFieldName || // Has sorting = multiple items
+          settings.RenderAs === 'grid' || // Grid rendering = multiple items
+          settings.RenderAs === 'searchlistbox' || // Search list box = multiple items
+          settings.LinkedContentNestedTypeID === '1' || // Nested content type 1 = array
+          settings.SharedContent === 'true' ||
+          field.name?.toLowerCase().includes('list') ||
+          field.name?.toLowerCase().includes('items') ||
+          field.name?.toLowerCase().includes('products');
+
         if (isArray) {
           return `ContentArrayFieldAtDepth<${typeName}, D>`;
         } else {
@@ -1014,7 +1024,11 @@ export class ZodSchemaGenerator {
     }
     // Fallback - assume array if field name suggests it
     const fieldName = field.name?.toLowerCase() || '';
-    if (fieldName.includes('list') || fieldName.includes('items') || fieldName.includes('products')) {
+    if (
+      fieldName.includes('list') ||
+      fieldName.includes('items') ||
+      fieldName.includes('products')
+    ) {
       return 'ContentArrayFieldAtDepth<any, D>';
     }
     return 'ContentFieldAtDepth<any, D>';
@@ -1025,17 +1039,20 @@ export class ZodSchemaGenerator {
    */
   private generateZodDepthUtilityTypes(): string {
     let output = '// Zod depth utility types for schema validation\n';
-    
-    output += 'export const ContentLinkDepthSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]);\n';
+
+    output +=
+      'export const ContentLinkDepthSchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]);\n';
     output += 'export type ContentLinkDepth = z.infer<typeof ContentLinkDepthSchema>;\n\n';
-    
+
     output += '// Helper function to create depth-aware content field schemas\n';
-    output += 'export const createContentFieldSchema = <T extends z.ZodTypeAny>(contentSchema: T) => \n';
+    output +=
+      'export const createContentFieldSchema = <T extends z.ZodTypeAny>(contentSchema: T) => \n';
     output += '  z.union([contentSchema, AgilityContentReferenceSchema]);\n\n';
-    
-    output += 'export const createContentArrayFieldSchema = <T extends z.ZodTypeAny>(contentSchema: T) => \n';
+
+    output +=
+      'export const createContentArrayFieldSchema = <T extends z.ZodTypeAny>(contentSchema: T) => \n';
     output += '  z.union([z.array(contentSchema), z.array(AgilityContentReferenceSchema)]);\n\n';
-    
+
     return output;
   }
 
@@ -1127,9 +1144,10 @@ export class ZodSchemaGenerator {
     if (settings && settings.ContentDefinition) {
       const referencedModel = this.modelsByReferenceName.get(settings.ContentDefinition);
       if (referencedModel) {
-        const schemaName = this.pascalCase(referencedModel.referenceName) + 'ContentSchemaFactory(depthType)';
+        const schemaName =
+          this.pascalCase(referencedModel.referenceName) + 'ContentSchemaFactory(depthType)';
         const isArray = settings.LinkedContentType === 'list' || settings.Sort;
-        
+
         if (isArray) {
           return `createContentArrayFieldSchema(${schemaName})`;
         } else {
@@ -1146,22 +1164,23 @@ export class ZodSchemaGenerator {
    */
   private generateDepthAwareUtilityTypes(): string {
     let output = '// Depth-aware utility types for ContentLinkDepth modeling\n';
-    
+
     output += 'export type ContentLinkDepth = 0 | 1 | 2 | 3 | 4 | 5;\n\n';
-    
+
     output += '/**\n';
-    output += ' * Models content field behavior based on ContentLinkDepth and ExpandAllContentLinks\n';
+    output +=
+      ' * Models content field behavior based on ContentLinkDepth and ExpandAllContentLinks\n';
     output += ' * - Depth 0 / ExpandAllContentLinks=false: Returns AgilityContentReference\n';
     output += ' * - Depth 1+ / ExpandAllContentLinks=true: Returns full content objects\n';
     output += ' */\n';
     output += 'export type ContentAtDepth<T, D extends ContentLinkDepth> = \n';
     output += '  D extends 0 ? AgilityContentReference :\n';
     output += '  T;\n\n';
-    
+
     output += 'export type ContentArrayAtDepth<T, D extends ContentLinkDepth> = \n';
     output += '  D extends 0 ? AgilityContentReference[] :\n';
     output += '  T[];\n\n';
-    
+
     return output;
   }
 
@@ -1190,7 +1209,7 @@ export class ZodSchemaGenerator {
       if (modelReference) {
         const typeName = this.pascalCase(modelReference) + 'Content';
         const lowercaseKey = container.referenceName.toLowerCase();
-        
+
         // Generate depth-specific entries
         output += `  "${lowercaseKey}": {\n`;
         output += `    depth0: ContentAtDepth<${typeName}, 0>;\n`;
@@ -1204,9 +1223,9 @@ export class ZodSchemaGenerator {
     }
 
     output += '}\n\n';
-    
+
     output += 'export type KnownContainerNames = keyof DepthAwareContainerMapping;\n\n';
-    
+
     return output;
   }
 
