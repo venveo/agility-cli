@@ -16,10 +16,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `yarn format:check` - Check if code is properly formatted
 
 ### Type Generation
-- `agility generate-types` - Generate TypeScript types and Zod schemas from models
+- `agility generate-types` - Generate TypeScript types and Zod schemas from models (supports shallow/deep content references)
 - `agility generate-types --format typescript` - Generate only TypeScript interfaces
 - `agility generate-types --format zod` - Generate only Zod schemas
 - `agility generate-types --output ./types` - Specify custom output directory
+- See `docs/TYPE_GENERATION.md` for comprehensive usage guide and examples
 
 ### CLI Testing
 - Install locally: `npm link` or `yarn link` to test CLI commands
@@ -51,7 +52,7 @@ The CLI follows a **phased deployment pattern**:
 - **ModelSync** (`src/modelSync.ts`) - Model-specific synchronization operations
 
 #### Services
-- **ZodSchemaGenerator** (`src/services/ZodSchemaGenerator.ts`) - Generates TypeScript types and Zod schemas from Agility models and containers
+- **ZodSchemaGenerator** (`src/services/ZodSchemaGenerator.ts`) - Generates TypeScript types and Zod schemas from Agility models and containers with support for shallow/deep content references
 
 #### Command Layer
 - **LoginCommand** (`src/commands/LoginCommand.ts`) - Handles user authentication with instance validation

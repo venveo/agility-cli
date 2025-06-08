@@ -327,6 +327,11 @@ export class ZodSchemaGenerator {
     output += '  text?: string;\n';
     output += '}\n\n';
 
+    output += 'export interface AgilityContentReference {\n';
+    output += '  referencename: string;\n';
+    output += '  fulllist?: boolean;\n';
+    output += '}\n\n';
+
     for (const model of models) {
       if (!model.referenceName || !model.fields) continue;
 
@@ -381,10 +386,17 @@ export class ZodSchemaGenerator {
     output += '  text: z.string().optional(),\n';
     output += '});\n\n';
 
+    output += 'export const AgilityContentReferenceSchema = z.object({\n';
+    output += '  referencename: z.string(),\n';
+    output += '  fulllist: z.boolean().optional(),\n';
+    output += '});\n\n';
+
     // Export the inferred types from schemas
     output += 'export type AgilityImage = z.infer<typeof AgilityImageSchema>;\n';
     output += 'export type AgilityFile = z.infer<typeof AgilityFileSchema>;\n';
-    output += 'export type AgilityLink = z.infer<typeof AgilityLinkSchema>;\n\n';
+    output += 'export type AgilityLink = z.infer<typeof AgilityLinkSchema>;\n';
+    output +=
+      'export type AgilityContentReference = z.infer<typeof AgilityContentReferenceSchema>;\n\n';
 
     // Generate content schemas with proper forward declarations
     for (const model of models) {
@@ -584,11 +596,14 @@ export class ZodSchemaGenerator {
         const typeName = this.pascalCase(referencedModel.referenceName) + 'Content';
         // Check if it's a single or array based on settings
         const isArray = settings.LinkedContentType === 'list' || settings.Sort;
-        return isArray ? `${typeName}[]` : typeName;
+        const fullType = isArray ? `${typeName}[]` : typeName;
+        const refType = isArray ? 'AgilityContentReference[]' : 'AgilityContentReference';
+        // Return union type that handles both shallow and deep references
+        return `${fullType} | ${refType}`;
       }
     }
     // Fallback to generic content reference
-    return 'string | string[]';
+    return 'AgilityContentReference | AgilityContentReference[]';
   }
 
   /**
@@ -604,11 +619,18 @@ export class ZodSchemaGenerator {
         const lazySchema = `z.lazy(() => ${schemaName})`;
         // Check if it's a single or array based on settings
         const isArray = settings.LinkedContentType === 'list' || settings.Sort;
-        return isArray ? `z.array(${lazySchema})` : lazySchema;
+
+        if (isArray) {
+          // For arrays: union of full content array or reference array
+          return `z.union([z.array(${lazySchema}), z.array(AgilityContentReferenceSchema)])`;
+        } else {
+          // For single items: union of full content or reference
+          return `z.union([${lazySchema}, AgilityContentReferenceSchema])`;
+        }
       }
     }
     // Fallback to generic content reference
-    return 'z.union([z.string(), z.array(z.string())])';
+    return 'z.union([AgilityContentReferenceSchema, z.array(AgilityContentReferenceSchema)])';
   }
 
   /**
