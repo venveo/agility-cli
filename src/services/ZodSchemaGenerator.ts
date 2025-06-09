@@ -418,7 +418,7 @@ export class ZodSchemaGenerator {
         const description = field.description || field.label || '';
 
         if (description) {
-          output += `  /** ${description} */\n`;
+          output += `  /** ${this.escapeDescription(description)} */\n`;
         }
         output += `  ${fieldName}: ${fieldType};\n`;
       }
@@ -442,7 +442,7 @@ export class ZodSchemaGenerator {
         const description = field.description || field.label || '';
 
         if (description) {
-          output += `  /** ${description} */\n`;
+          output += `  /** ${this.escapeDescription(description)} */\n`;
         }
         output += `  ${fieldName}: ${fieldType};\n`;
       }
@@ -549,7 +549,7 @@ export class ZodSchemaGenerator {
         const description = field.description || field.label || '';
 
         if (description) {
-          output += `  /** ${description} */\n`;
+          output += `  /** ${this.escapeDescription(description)} */\n`;
         }
         output += `  ${fieldName}: ${zodType},\n`;
       }
@@ -575,7 +575,7 @@ export class ZodSchemaGenerator {
         const description = field.description || field.label || '';
 
         if (description) {
-          output += `  /** ${description} */\n`;
+          output += `  /** ${this.escapeDescription(description)} */\n`;
         }
         output += `  ${fieldName}: ${zodType},\n`;
       }
@@ -623,7 +623,9 @@ export class ZodSchemaGenerator {
       if (correspondingModel && correspondingModel.fields) {
         for (const field of correspondingModel.fields) {
           if (field.type === 'Content' && field.settings && field.settings.ContentDefinition) {
-            const referencedModel = this.modelsByReferenceName.get(field.settings.ContentDefinition);
+            const referencedModel = this.modelsByReferenceName.get(
+              field.settings.ContentDefinition
+            );
             if (referencedModel) {
               const typeName = this.pascalCase(referencedModel.referenceName) + 'Content';
               referencedContentTypes.add(typeName);
@@ -634,32 +636,32 @@ export class ZodSchemaGenerator {
     }
 
     // Import base types and referenced content types
-    output += "import type {\n";
-    output += "  AgilityContentItem,\n";
-    output += "  AgilityImage,\n";
-    output += "  AgilityFile,\n";
-    output += "  AgilityLink,\n";
-    output += "  AgilityContentReference,\n";
-    output += "  ContentLinkDepth,\n";
-    output += "  ContentFieldAtDepth,\n";
-    output += "  ContentArrayFieldAtDepth";
-    
+    output += 'import type {\n';
+    output += '  AgilityContentItem,\n';
+    output += '  AgilityImage,\n';
+    output += '  AgilityFile,\n';
+    output += '  AgilityLink,\n';
+    output += '  AgilityContentReference,\n';
+    output += '  ContentLinkDepth,\n';
+    output += '  ContentFieldAtDepth,\n';
+    output += '  ContentArrayFieldAtDepth';
+
     // Add referenced content types to imports if any exist
     if (referencedContentTypes.size > 0) {
-      output += ",\n";
+      output += ',\n';
       const sortedTypes = Array.from(referencedContentTypes).sort();
       for (let i = 0; i < sortedTypes.length; i++) {
         output += `  ${sortedTypes[i]}`;
         if (i < sortedTypes.length - 1) {
-          output += ",\n";
+          output += ',\n';
         } else {
-          output += "\n";
+          output += '\n';
         }
       }
     } else {
-      output += "\n";
+      output += '\n';
     }
-    
+
     output += "} from './content-types';\n\n";
 
     // Generate module interfaces
@@ -684,7 +686,7 @@ export class ZodSchemaGenerator {
           const description = field.description || field.label || '';
 
           if (description) {
-            output += `  /** ${description} */\n`;
+            output += `  /** ${this.escapeDescription(description)} */\n`;
           }
           output += `  ${fieldName}: ${fieldType};\n`;
         }
@@ -702,7 +704,7 @@ export class ZodSchemaGenerator {
           const description = field.description || field.label || '';
 
           if (description) {
-            output += `  /** ${description} */\n`;
+            output += `  /** ${this.escapeDescription(description)} */\n`;
           }
           output += `  ${fieldName}: ${fieldType};\n`;
         }
@@ -742,22 +744,22 @@ export class ZodSchemaGenerator {
       }
     }
     output += moduleTypeNames.join(' | ') + ';\n\n';
-    
+
     // Simple helper function for getting props type by module name
     output += '/**\n';
     output += ' * Helper function to get the props type for a specific content module\n';
     output += ' * Usage: Use the ContentModuleMapping to determine the correct props type\n';
     output += ' */\n';
     output += 'export type GetContentModuleProps<T extends ContentModuleName> = \n';
-    
+
     // Generate the conditional type mapping
     const validModules = contentModules.filter(m => m.referenceName);
     for (let i = 0; i < validModules.length; i++) {
       const module = validModules[i];
       const moduleTypeName = this.pascalCase(module.referenceName!) + 'Props';
-      
+
       output += `  T extends "${module.referenceName}" ? ${moduleTypeName} :`;
-      
+
       if (i === validModules.length - 1) {
         output += '\n  never;\n\n';
       } else {
@@ -772,8 +774,8 @@ export class ZodSchemaGenerator {
       if (module.referenceName) {
         output += `  {\n`;
         output += `    referenceName: "${module.referenceName}",\n`;
-        output += `    displayName: "${module.displayName || module.referenceName}",\n`;
-        output += `    description: "${module.description || ''}",\n`;
+        output += `    displayName: "${this.escapeDescription(module.displayName || module.referenceName)}",\n`;
+        output += `    description: "${this.escapeDescription(module.description || '')}",\n`;
         output += `    hasFields: ${modelById.get(module.id || 0)?.fields?.length ? 'true' : 'false'},\n`;
         output += `  },\n`;
       }
@@ -791,7 +793,7 @@ export class ZodSchemaGenerator {
     models: mgmtApi.Model[]
   ): string {
     let output = "import { z } from 'zod/v4';\n";
-    
+
     // Create lookup map for models by ID
     const modelById = new Map<number, mgmtApi.Model>();
     for (const model of models) {
@@ -808,9 +810,12 @@ export class ZodSchemaGenerator {
       if (correspondingModel && correspondingModel.fields) {
         for (const field of correspondingModel.fields) {
           if (field.type === 'Content' && field.settings && field.settings.ContentDefinition) {
-            const referencedModel = this.modelsByReferenceName.get(field.settings.ContentDefinition);
+            const referencedModel = this.modelsByReferenceName.get(
+              field.settings.ContentDefinition
+            );
             if (referencedModel) {
-              const schemaFactoryName = this.pascalCase(referencedModel.referenceName) + 'ContentSchemaFactory';
+              const schemaFactoryName =
+                this.pascalCase(referencedModel.referenceName) + 'ContentSchemaFactory';
               referencedSchemaFactories.add(schemaFactoryName);
             }
           }
@@ -818,41 +823,32 @@ export class ZodSchemaGenerator {
       }
     }
 
-    output +=
-      "import {\n";
-    output +=
-      "  AgilityImageSchema,\n";
-    output +=
-      "  AgilityFileSchema,\n";
-    output +=
-      "  AgilityLinkSchema,\n";
-    output +=
-      "  AgilityContentReferenceSchema,\n";
-    output +=
-      "  createContentFieldSchema,\n";
-    output +=
-      "  createContentArrayFieldSchema,\n";
-    output +=
-      "  ContentLinkDepth";
-    
+    output += 'import {\n';
+    output += '  AgilityImageSchema,\n';
+    output += '  AgilityFileSchema,\n';
+    output += '  AgilityLinkSchema,\n';
+    output += '  AgilityContentReferenceSchema,\n';
+    output += '  createContentFieldSchema,\n';
+    output += '  createContentArrayFieldSchema,\n';
+    output += '  ContentLinkDepth';
+
     // Add referenced schema factories to imports if any exist
     if (referencedSchemaFactories.size > 0) {
-      output += ",\n";
+      output += ',\n';
       const sortedFactories = Array.from(referencedSchemaFactories).sort();
       for (let i = 0; i < sortedFactories.length; i++) {
         output += `  ${sortedFactories[i]}`;
         if (i < sortedFactories.length - 1) {
-          output += ",\n";
+          output += ',\n';
         } else {
-          output += "\n";
+          output += '\n';
         }
       }
     } else {
-      output += "\n";
+      output += '\n';
     }
-    
-    output +=
-      "} from './content-schemas';\n\n";
+
+    output += "} from './content-schemas';\n\n";
     output += '// Generated Zod schemas for content modules\n';
     output += '// Generated on: ' + new Date().toISOString() + '\n\n';
 
@@ -877,7 +873,7 @@ export class ZodSchemaGenerator {
           const description = field.description || field.label || '';
 
           if (description) {
-            output += `  /** ${description} */\n`;
+            output += `  /** ${this.escapeDescription(description)} */\n`;
           }
           output += `  ${fieldName}: ${zodType},\n`;
         }
@@ -895,7 +891,7 @@ export class ZodSchemaGenerator {
           const description = field.description || field.label || '';
 
           if (description) {
-            output += `  /** ${description} */\n`;
+            output += `  /** ${this.escapeDescription(description)} */\n`;
           }
           output += `  ${fieldName}: ${zodType},\n`;
         }
@@ -991,6 +987,24 @@ export class ZodSchemaGenerator {
         return index === 0 ? word.toLowerCase() : word.toUpperCase();
       })
       .replace(/\\s+/g, '');
+  }
+
+  /**
+   * Escape quotes and other special characters in descriptions for use in JSDoc comments
+   */
+  private escapeDescription(description: string): string {
+    if (!description) return '';
+    return description
+      .replace(/\\/g, '\\\\') // Escape backslashes first
+      .replace(/\*\//g, '*\\/') // Escape JSDoc end sequences
+      .replace(/"/g, '\\"') // Escape double quotes
+      .replace(/'/g, "\\'") // Escape single quotes
+      .replace(/\r\n/g, ' ') // Replace CRLF with space
+      .replace(/\n/g, ' ') // Replace LF with space
+      .replace(/\r/g, ' ') // Replace CR with space
+      .replace(/\t/g, ' ') // Replace tabs with space
+      .replace(/\s+/g, ' ') // Collapse multiple spaces
+      .trim(); // Remove leading/trailing whitespace
   }
 
   private pascalCase(str: string): string {
