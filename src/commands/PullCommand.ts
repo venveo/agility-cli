@@ -3,6 +3,7 @@ import { sync } from '../sync';
 import { asset } from '../asset';
 import { container } from '../container';
 import { model } from '../model';
+import { contentModules } from '../contentModules';
 
 const colors = require('ansi-colors');
 
@@ -52,6 +53,9 @@ export class PullCommand extends BaseCommand {
         multibar
       );
       await contentPageSync.sync();
+
+      const contentModulesSync = new contentModules(this.context.options, multibar);
+      await contentModulesSync.getContentModules(guid);
 
       const assetsSync = new asset(this.context.options, multibar);
       await assetsSync.getAssets(guid);
