@@ -12,9 +12,20 @@
   "homepage": "https://github.com/agility/agility-cli#readme",
   "main": "dist/index.js",
   "scripts": {
+    "clean": "rm -rf dist/",
+    "prebuild": "yarn clean",
     "build": "tsc",
     "prepare": "yarn build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "generate-types": "node dist/index.js generate-types",
+    "generate-types:dev": "yarn build && yarn generate-types",
+    "dev": "yarn build && yarn generate-types:dev",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts"
   },
   "keywords": [
     "typescript",
@@ -44,10 +55,23 @@
     "cli-progress": "^3.11.2",
     "inquirer": "^8.0.0",
     "open": "^8.4.0",
-    "yargs": "^17.6.2"
+    "yargs": "^17.6.2",
+    "zod": "^3.25.56"
   },
   "devDependencies": {
+    "@jest/globals": "30.0.0-beta.3",
     "@types/inquirer": "^9.0.3",
-    "@types/yargs": "^17.0.17"
-  }
+    "@types/jest": "^29.5.14",
+    "@types/yargs": "^17.0.17",
+    "@typescript-eslint/eslint-plugin": "^8.33.1",
+    "@typescript-eslint/parser": "^8.33.1",
+    "eslint": "^9.28.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.1",
+    "jest": "^29.7.0",
+    "prettier": "^3.5.3",
+    "ts-jest": "^29.3.4",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "yarn@4.9.2"
 }

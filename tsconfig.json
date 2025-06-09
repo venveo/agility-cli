@@ -1,14 +1,25 @@
 {
 	"compilerOptions": {
-    "module" : "commonjs",
-	  "allowJs": true,
-	  "declaration": true,
-	  "jsx": "react",
-	  "target": "es5",
-	  "outDir": "./dist/",
-	  "lib": ["es2016", "dom"],
-	  "esModuleInterop": true,
-	  "skipLibCheck": true,
-	  "allowSyntheticDefaultImports": true
-	}
-  }
+		"module": "commonjs",
+		"allowJs": true,
+		"declaration": true,
+		"jsx": "react",
+		"target": "es5",
+		"rootDir": "./src",
+		"outDir": "./dist/",
+		"lib": ["es2016", "dom"],
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true
+	},
+	"include": [
+		"src/**/*"
+	],
+	"exclude": [
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"test-basic.js",
+		"dist/**/*",
+		"generated-types/**/*"
+	]
+}

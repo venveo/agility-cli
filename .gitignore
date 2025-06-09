@@ -32,3 +32,8 @@ yarn-error.log*
 
 # ignore tailwind styles
 /src/styles.css
+
+.vscode
+.yarn
+.claude/settings.local.json
+generated-types/*
