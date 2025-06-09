@@ -217,6 +217,43 @@ export class ZodSchemaGenerator {
     .passthrough(); // Allow additional fields that aren't in the schema
 
   /**
+   * Load and validate content modules from .agility-files/contentModules directory
+   */
+  public loadContentModules(baseFolder = '.agility-files'): mgmtApi.Model[] {
+    try {
+      const files = this.fileOps.readDirectory('contentModules', baseFolder);
+      const contentModules: mgmtApi.Model[] = [];
+
+      for (const fileContent of files) {
+        try {
+          const moduleData = JSON.parse(fileContent);
+          // Content modules are validated with the same schema as models
+          const validatedModule = this.ModelSchema.parse(moduleData);
+          const module = validatedModule as unknown as mgmtApi.Model;
+
+          // Only include modules (not pages)
+          if (module.contentDefinitionTypeName === 'Module') {
+            contentModules.push(module);
+
+            // Store in lookup map for cross-referencing
+            if (module.referenceName) {
+              this.modelsByReferenceName.set(module.referenceName, module);
+            }
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (error) {
+          console.warn(`⚠️  Skipping invalid content module file - validation failed`);
+        }
+      }
+
+      return contentModules;
+    } catch (error) {
+      console.warn(`No content modules found in ${baseFolder}/contentModules: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Load and validate models from .agility-files/models directory
    */
   public loadModels(baseFolder = '.agility-files'): mgmtApi.Model[] {
@@ -555,6 +592,324 @@ export class ZodSchemaGenerator {
       output += `export type ${interfaceName}<D extends ContentLinkDepth = 1> = z.infer<ReturnType<typeof ${factoryName}<z.ZodLiteral<D>>>>;\n`;
       output += `export type ${interfaceName}Depth0 = z.infer<typeof ${this.pascalCase(model.referenceName)}ContentDepth0Schema>;\n`;
       output += `export type ${interfaceName}Depth2 = z.infer<typeof ${this.pascalCase(model.referenceName)}ContentDepth2Schema>;\n\n`;
+    }
+
+    return output;
+  }
+
+  /**
+   * Generate content module type interfaces and mapping
+   */
+  public generateContentModuleTypes(
+    contentModules: mgmtApi.Model[],
+    models: mgmtApi.Model[]
+  ): string {
+    let output = '// Generated content module type definitions for Agility CMS\n';
+    output += '// Generated on: ' + new Date().toISOString() + '\n\n';
+
+    // Create lookup map for models by ID
+    const modelById = new Map<number, mgmtApi.Model>();
+    for (const model of models) {
+      if (model.id) {
+        modelById.set(model.id, model);
+      }
+    }
+
+    // Collect all referenced content types
+    const referencedContentTypes = new Set<string>();
+    for (const module of contentModules) {
+      if (!module.referenceName) continue;
+      const correspondingModel = modelById.get(module.id || 0);
+      if (correspondingModel && correspondingModel.fields) {
+        for (const field of correspondingModel.fields) {
+          if (field.type === 'Content' && field.settings && field.settings.ContentDefinition) {
+            const referencedModel = this.modelsByReferenceName.get(field.settings.ContentDefinition);
+            if (referencedModel) {
+              const typeName = this.pascalCase(referencedModel.referenceName) + 'Content';
+              referencedContentTypes.add(typeName);
+            }
+          }
+        }
+      }
+    }
+
+    // Import base types and referenced content types
+    output += "import type {\n";
+    output += "  AgilityContentItem,\n";
+    output += "  AgilityImage,\n";
+    output += "  AgilityFile,\n";
+    output += "  AgilityLink,\n";
+    output += "  AgilityContentReference,\n";
+    output += "  ContentLinkDepth,\n";
+    output += "  ContentFieldAtDepth,\n";
+    output += "  ContentArrayFieldAtDepth";
+    
+    // Add referenced content types to imports if any exist
+    if (referencedContentTypes.size > 0) {
+      output += ",\n";
+      const sortedTypes = Array.from(referencedContentTypes).sort();
+      for (let i = 0; i < sortedTypes.length; i++) {
+        output += `  ${sortedTypes[i]}`;
+        if (i < sortedTypes.length - 1) {
+          output += ",\n";
+        } else {
+          output += "\n";
+        }
+      }
+    } else {
+      output += "\n";
+    }
+    
+    output += "} from './content-types';\n\n";
+
+    // Generate module interfaces
+    output += '// Content Module Types\n';
+    for (const module of contentModules) {
+      if (!module.referenceName) continue;
+
+      const moduleTypeName = this.pascalCase(module.referenceName);
+      const correspondingModel = modelById.get(module.id || 0);
+
+      output += `/** ${module.displayName || module.referenceName} */\n`;
+
+      if (correspondingModel && correspondingModel.fields && correspondingModel.fields.length > 0) {
+        // Module has fields - generate props interface
+        output += `export interface ${moduleTypeName}Props {\n`;
+
+        for (const field of correspondingModel.fields) {
+          if (!field.name || !field.isDataField) continue;
+
+          const fieldName = this.camelize(field.name);
+          const fieldType = this.getBaseTypeScriptType(field);
+          const description = field.description || field.label || '';
+
+          if (description) {
+            output += `  /** ${description} */\n`;
+          }
+          output += `  ${fieldName}: ${fieldType};\n`;
+        }
+
+        output += '}\n\n';
+
+        // Generate depth-aware version
+        output += `export interface ${moduleTypeName}PropsDepthAware<D extends ContentLinkDepth = 1> {\n`;
+
+        for (const field of correspondingModel.fields) {
+          if (!field.name || !field.isDataField) continue;
+
+          const fieldName = this.camelize(field.name);
+          const fieldType = this.getDepthAwareTypeScriptType(field);
+          const description = field.description || field.label || '';
+
+          if (description) {
+            output += `  /** ${description} */\n`;
+          }
+          output += `  ${fieldName}: ${fieldType};\n`;
+        }
+
+        output += '}\n\n';
+      } else {
+        // Module has no fields - generate empty props interface
+        output += `export interface ${moduleTypeName}Props {\n`;
+        output += '  // This module has no configurable fields\n';
+        output += '}\n\n';
+      }
+    }
+
+    // Generate content module mapping
+    output += '// Content Module Mapping\n';
+    output += 'export const ContentModuleMapping = {\n';
+
+    for (const module of contentModules) {
+      if (!module.referenceName) continue;
+
+      const moduleTypeName = this.pascalCase(module.referenceName);
+      output += `  "${module.referenceName}": "${moduleTypeName}Props",\n`;
+    }
+
+    output += '} as const;\n\n';
+
+    // Generate helper types
+    output += 'export type ContentModuleName = keyof typeof ContentModuleMapping;\n\n';
+
+    // Generate a union type of all props interfaces
+    output += 'export type AllContentModuleProps = ';
+    const moduleTypeNames: string[] = [];
+    for (const module of contentModules) {
+      if (module.referenceName) {
+        const typeName = this.pascalCase(module.referenceName) + 'Props';
+        moduleTypeNames.push(typeName);
+      }
+    }
+    output += moduleTypeNames.join(' | ') + ';\n\n';
+    
+    // Simple helper function for getting props type by module name
+    output += '/**\n';
+    output += ' * Helper function to get the props type for a specific content module\n';
+    output += ' * Usage: Use the ContentModuleMapping to determine the correct props type\n';
+    output += ' */\n';
+    output += 'export type GetContentModuleProps<T extends ContentModuleName> = \n';
+    
+    // Generate the conditional type mapping
+    const validModules = contentModules.filter(m => m.referenceName);
+    for (let i = 0; i < validModules.length; i++) {
+      const module = validModules[i];
+      const moduleTypeName = this.pascalCase(module.referenceName!) + 'Props';
+      
+      output += `  T extends "${module.referenceName}" ? ${moduleTypeName} :`;
+      
+      if (i === validModules.length - 1) {
+        output += '\n  never;\n\n';
+      } else {
+        output += '\n';
+      }
+    }
+
+    // Generate module list for easy consumption
+    output += '// Available Content Modules\n';
+    output += 'export const AvailableContentModules = [\n';
+    for (const module of contentModules) {
+      if (module.referenceName) {
+        output += `  {\n`;
+        output += `    referenceName: "${module.referenceName}",\n`;
+        output += `    displayName: "${module.displayName || module.referenceName}",\n`;
+        output += `    description: "${module.description || ''}",\n`;
+        output += `    hasFields: ${modelById.get(module.id || 0)?.fields?.length ? 'true' : 'false'},\n`;
+        output += `  },\n`;
+      }
+    }
+    output += '] as const;\n\n';
+
+    return output;
+  }
+
+  /**
+   * Generate content module Zod schemas
+   */
+  public generateContentModuleZodSchemas(
+    contentModules: mgmtApi.Model[],
+    models: mgmtApi.Model[]
+  ): string {
+    let output = "import { z } from 'zod/v4';\n";
+    
+    // Create lookup map for models by ID
+    const modelById = new Map<number, mgmtApi.Model>();
+    for (const model of models) {
+      if (model.id) {
+        modelById.set(model.id, model);
+      }
+    }
+
+    // Collect all referenced content schema factories
+    const referencedSchemaFactories = new Set<string>();
+    for (const module of contentModules) {
+      if (!module.referenceName) continue;
+      const correspondingModel = modelById.get(module.id || 0);
+      if (correspondingModel && correspondingModel.fields) {
+        for (const field of correspondingModel.fields) {
+          if (field.type === 'Content' && field.settings && field.settings.ContentDefinition) {
+            const referencedModel = this.modelsByReferenceName.get(field.settings.ContentDefinition);
+            if (referencedModel) {
+              const schemaFactoryName = this.pascalCase(referencedModel.referenceName) + 'ContentSchemaFactory';
+              referencedSchemaFactories.add(schemaFactoryName);
+            }
+          }
+        }
+      }
+    }
+
+    output +=
+      "import {\n";
+    output +=
+      "  AgilityImageSchema,\n";
+    output +=
+      "  AgilityFileSchema,\n";
+    output +=
+      "  AgilityLinkSchema,\n";
+    output +=
+      "  AgilityContentReferenceSchema,\n";
+    output +=
+      "  createContentFieldSchema,\n";
+    output +=
+      "  createContentArrayFieldSchema,\n";
+    output +=
+      "  ContentLinkDepth";
+    
+    // Add referenced schema factories to imports if any exist
+    if (referencedSchemaFactories.size > 0) {
+      output += ",\n";
+      const sortedFactories = Array.from(referencedSchemaFactories).sort();
+      for (let i = 0; i < sortedFactories.length; i++) {
+        output += `  ${sortedFactories[i]}`;
+        if (i < sortedFactories.length - 1) {
+          output += ",\n";
+        } else {
+          output += "\n";
+        }
+      }
+    } else {
+      output += "\n";
+    }
+    
+    output +=
+      "} from './content-schemas';\n\n";
+    output += '// Generated Zod schemas for content modules\n';
+    output += '// Generated on: ' + new Date().toISOString() + '\n\n';
+
+    // Generate module schemas
+    for (const module of contentModules) {
+      if (!module.referenceName) continue;
+
+      const moduleTypeName = this.pascalCase(module.referenceName);
+      const correspondingModel = modelById.get(module.id || 0);
+
+      output += `// Schema for ${module.displayName || module.referenceName}\n`;
+
+      if (correspondingModel && correspondingModel.fields && correspondingModel.fields.length > 0) {
+        // Module has fields - generate props schema
+        output += `export const ${moduleTypeName}PropsSchema = z.object({\n`;
+
+        for (const field of correspondingModel.fields) {
+          if (!field.name || !field.isDataField) continue;
+
+          const fieldName = this.camelize(field.name);
+          const zodType = this.getBaseZodType(field);
+          const description = field.description || field.label || '';
+
+          if (description) {
+            output += `  /** ${description} */\n`;
+          }
+          output += `  ${fieldName}: ${zodType},\n`;
+        }
+
+        output += '});\n\n';
+
+        // Generate depth-aware schema factory
+        output += `export const ${moduleTypeName}PropsSchemaFactory = <D extends z.ZodTypeAny>(depthType: D) => z.object({\n`;
+
+        for (const field of correspondingModel.fields) {
+          if (!field.name || !field.isDataField) continue;
+
+          const fieldName = this.camelize(field.name);
+          const zodType = this.getDepthAwareZodType(field);
+          const description = field.description || field.label || '';
+
+          if (description) {
+            output += `  /** ${description} */\n`;
+          }
+          output += `  ${fieldName}: ${zodType},\n`;
+        }
+
+        output += '});\n\n';
+      } else {
+        // Module has no fields - generate empty schema
+        output += `export const ${moduleTypeName}PropsSchema = z.object({});\n`;
+        output += `export const ${moduleTypeName}PropsSchemaFactory = <D extends z.ZodTypeAny>(depthType: D) => z.object({});\n\n`;
+      }
+
+      // Generate inferred types
+      output += `export type ${moduleTypeName}Props = z.infer<typeof ${moduleTypeName}PropsSchema>;\n`;
+      output += `export type ${moduleTypeName}PropsDepthAware<D extends ContentLinkDepth = 1> = z.infer<ReturnType<typeof ${moduleTypeName}PropsSchemaFactory<z.ZodLiteral<D>>>>;\n\n`;
     }
 
     return output;
