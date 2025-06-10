@@ -395,6 +395,27 @@ export class ContentModuleGenerator {
       }
     }
 
+    // Helper function for getting depth-aware props type by module name
+    output += '/**\n';
+    output += ' * Helper function to get the depth-aware props type for a specific content module\n';
+    output += ' * Usage: When using contentLinkDepth > 1, this provides properly typed expanded content links\n';
+    output += ' */\n';
+    output += 'export type GetContentModulePropsDepthAware<T extends ContentModuleName, D extends ContentLinkDepth = 1> = \n';
+
+    // Generate the conditional type mapping for depth-aware types
+    for (let i = 0; i < validModules.length; i++) {
+      const module = validModules[i];
+      const moduleTypeName = StringUtils.pascalCase(module.referenceName!) + 'PropsDepthAware<D>';
+
+      output += `  T extends "${module.referenceName}" ? ${moduleTypeName} :`;
+
+      if (i === validModules.length - 1) {
+        output += '\n  never;\n\n';
+      } else {
+        output += '\n';
+      }
+    }
+
     return output;
   }
 
