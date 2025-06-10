@@ -26,6 +26,7 @@ export class GenerateTypesCommand extends BaseCommand {
         sourceFolder,
         includeDepthAware: true,
         includeContentModules: true,
+        includeNextJSComponents: true,
       };
 
       const typeGenerationService = new TypeGenerationService(this.context.fileOps);

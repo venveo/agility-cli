@@ -10,6 +10,7 @@ export interface GenerationConfig {
   sourceFolder: string;
   includeDepthAware: boolean;
   includeContentModules: boolean;
+  includeNextJSComponents?: boolean;
 }
 
 export interface TypeGenerationContext {
@@ -46,7 +47,7 @@ export interface GenerationSummary {
 export interface GeneratedFile {
   path: string;
   content: string;
-  type: 'typescript' | 'zod' | 'mapping' | 'report';
+  type: 'typescript' | 'zod' | 'mapping' | 'report' | 'component';
 }
 
 export type ContentLinkDepth = 0 | 1 | 2 | 3 | 4 | 5;

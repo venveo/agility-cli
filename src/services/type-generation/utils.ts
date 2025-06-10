@@ -65,13 +65,8 @@ export class FieldTypeResolver {
           isArray: false,
           isContentReference: false,
         };
-      case 'Dropdown':
-        return {
-          baseType: 'string',
-          zodType: 'z.string()',
-          isArray: false,
-          isContentReference: false,
-        };
+      case 'DropdownList':
+        return this.generateDropdownType(field);
       case 'Link':
         return {
           baseType: COMMON_TYPES.Link,
@@ -169,6 +164,58 @@ export class FieldTypeResolver {
         : COMMON_ZOD_TYPES.ContentReference,
       isArray,
       isContentReference: true,
+    };
+  }
+
+  private generateDropdownType(field: mgmtApi.ModelField): FieldTypeInfo {
+    const settings = field.settings;
+    if (!settings?.Choices) {
+      // Fallback to string if no choices defined
+      return {
+        baseType: 'string',
+        zodType: 'z.string()',
+        isArray: false,
+        isContentReference: false,
+      };
+    }
+
+    // Parse choices format: "Display|value\nDisplay2|value2"
+    const choicesText = settings.Choices as string;
+    const choiceLines = choicesText.split('\n').filter(line => line.trim());
+    const values: string[] = [];
+
+    for (const line of choiceLines) {
+      const parts = line.split('|');
+      if (parts.length >= 2) {
+        // Use the value part (after the |)
+        values.push(parts[1].trim());
+      } else {
+        // If no pipe, use the entire line as both display and value
+        values.push(line.trim());
+      }
+    }
+
+    if (values.length === 0) {
+      // Fallback to string if no valid choices
+      return {
+        baseType: 'string',
+        zodType: 'z.string()',
+        isArray: false,
+        isContentReference: false,
+      };
+    }
+
+    // Generate union type for TypeScript
+    const unionType = values.map(v => `"${v}"`).join(' | ');
+    
+    // Generate enum for Zod
+    const zodEnum = `z.enum([${values.map(v => `"${v}"`).join(', ')}])`;
+
+    return {
+      baseType: unionType,
+      zodType: zodEnum,
+      isArray: false,
+      isContentReference: false,
     };
   }
 

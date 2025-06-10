@@ -220,6 +220,7 @@ export class TypeGenerationService {
     const mappingFiles = this.containerMappingGenerator.generate(context);
     allFiles.push(...mappingFiles);
 
+
     return allFiles;
   }
 
@@ -377,6 +378,7 @@ async function getContainerData<T extends keyof typeof ContainerTypeMapping>(
 // Usage
 const blogPosts = await getContainerData('blogposts'); // Type-safe
 \`\`\`
+
 `;
 
     return {
@@ -394,6 +396,8 @@ const blogPosts = await getContainerData('blogposts'); // Type-safe
         return 'Zod schema definitions';
       case 'mapping':
         return 'Container-to-content-type mapping';
+      case 'component':
+        return 'NextJS component prop interfaces and utilities';
       case 'report':
         return 'Generation report';
       default:
