@@ -380,6 +380,14 @@ export class ZodSchemaGenerator {
     output += '  text?: string;\n';
     output += '}\n\n';
 
+    output += 'export interface AgilityGallery {\n';
+    output += '  galleryID: number;\n';
+    output += '  name: string;\n';
+    output += '  description?: string;\n';
+    output += '  media: AgilityImage[];\n';
+    output += '  count: number;\n';
+    output += '}\n\n';
+
     output += 'export interface AgilityContentReference {\n';
     output += '  referencename: string;\n';
     output += '  fulllist?: boolean;\n';
@@ -489,6 +497,14 @@ export class ZodSchemaGenerator {
     output += '  text: z.string().optional(),\n';
     output += '});\n\n';
 
+    output += 'export const AgilityGallerySchema = z.object({\n';
+    output += '  galleryID: z.number(),\n';
+    output += '  name: z.string(),\n';
+    output += '  description: z.string().optional(),\n';
+    output += '  media: z.array(AgilityImageSchema),\n';
+    output += '  count: z.number(),\n';
+    output += '});\n\n';
+
     output += 'export const AgilityContentReferenceSchema = z.object({\n';
     output += '  referencename: z.string(),\n';
     output += '  fulllist: z.boolean().optional(),\n';
@@ -513,6 +529,7 @@ export class ZodSchemaGenerator {
     output += 'export type AgilityImage = z.infer<typeof AgilityImageSchema>;\n';
     output += 'export type AgilityFile = z.infer<typeof AgilityFileSchema>;\n';
     output += 'export type AgilityLink = z.infer<typeof AgilityLinkSchema>;\n';
+    output += 'export type AgilityGallery = z.infer<typeof AgilityGallerySchema>;\n';
     output +=
       'export type AgilityContentReference = z.infer<typeof AgilityContentReferenceSchema>;\n';
     output += 'export type AgilityContentItem<TFields = any> = {\n';
@@ -641,6 +658,7 @@ export class ZodSchemaGenerator {
     output += '  AgilityImage,\n';
     output += '  AgilityFile,\n';
     output += '  AgilityLink,\n';
+    output += '  AgilityGallery,\n';
     output += '  AgilityContentReference,\n';
     output += '  ContentLinkDepth,\n';
     output += '  ContentFieldAtDepth,\n';
@@ -827,6 +845,7 @@ export class ZodSchemaGenerator {
     output += '  AgilityImageSchema,\n';
     output += '  AgilityFileSchema,\n';
     output += '  AgilityLinkSchema,\n';
+    output += '  AgilityGallerySchema,\n';
     output += '  AgilityContentReferenceSchema,\n';
     output += '  createContentFieldSchema,\n';
     output += '  createContentArrayFieldSchema,\n';
@@ -1043,7 +1062,7 @@ export class ZodSchemaGenerator {
       case 'AttachmentList':
         return 'AgilityFile[]';
       case 'PhotoGallery':
-        return 'AgilityImage[]';
+        return 'AgilityGallery';
       default:
         return 'any';
     }
@@ -1081,7 +1100,7 @@ export class ZodSchemaGenerator {
       case 'AttachmentList':
         return 'z.array(AgilityFileSchema)';
       case 'PhotoGallery':
-        return 'z.array(AgilityImageSchema)';
+        return 'AgilityGallerySchema';
       default:
         return 'z.any()';
     }
@@ -1170,7 +1189,7 @@ export class ZodSchemaGenerator {
       case 'AttachmentList':
         return 'z.array(AgilityFileSchema)';
       case 'PhotoGallery':
-        return 'z.array(AgilityImageSchema)';
+        return 'AgilityGallerySchema';
       default:
         return 'z.any()';
     }
@@ -1315,7 +1334,7 @@ export class ZodSchemaGenerator {
       case 'AttachmentList':
         return 'AgilityFile[]';
       case 'PhotoGallery':
-        return 'AgilityImage[]';
+        return 'AgilityGallery';
       default:
         return 'any';
     }
@@ -1459,7 +1478,7 @@ export class ZodSchemaGenerator {
       case 'AttachmentList':
         return 'z.array(AgilityFileSchema)';
       case 'PhotoGallery':
-        return 'z.array(AgilityImageSchema)';
+        return 'AgilityGallerySchema';
       default:
         return 'z.any()';
     }
@@ -1499,7 +1518,7 @@ export class ZodSchemaGenerator {
       case 'AttachmentList':
         return 'z.array(AgilityFileSchema)';
       case 'PhotoGallery':
-        return 'z.array(AgilityImageSchema)';
+        return 'AgilityGallerySchema';
       default:
         return 'z.any()';
     }
