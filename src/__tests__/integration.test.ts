@@ -1,6 +1,11 @@
 import { ZodSchemaGenerator } from '../services/ZodSchemaGenerator';
 import { GenerateTypesCommand } from '../commands/GenerateTypesCommand';
-import { createMockModel, createMockModelField, createMockContainer, createMockContentViewColumn } from './test-helpers';
+import {
+  createMockModel,
+  createMockModelField,
+  createMockContainer,
+  createMockContentViewColumn,
+} from './test-helpers';
 import * as fs from 'fs';
 import * as path from 'path';
 import { jest } from '@jest/globals';
@@ -13,7 +18,7 @@ describe('Type Generation Integration Tests', () => {
   beforeAll(() => {
     generator = new ZodSchemaGenerator();
     command = new GenerateTypesCommand();
-    
+
     // Mock the context for the command
     command['context'] = {
       auth: {} as any,
@@ -39,7 +44,7 @@ describe('Type Generation Integration Tests', () => {
         cliFolderExists: jest.fn().mockReturnValue(true) as any,
         codeFileExists: jest.fn().mockReturnValue(true) as any,
         cleanup: jest.fn(),
-        downloadFile: jest.fn().mockResolvedValue(undefined) as any,
+        downloadFile: jest.fn().mockImplementation(() => Promise.resolve()) as any,
         createTempFile: jest.fn().mockReturnValue('') as any,
         readTempFile: jest.fn().mockReturnValue('') as any,
       },
@@ -75,15 +80,17 @@ describe('Type Generation Integration Tests', () => {
 
       // Verify basic structure
       expect(interfaces).toContain('export interface BlogPostContentBase');
-      expect(interfaces).toContain('export interface BlogPostContent<D extends ContentLinkDepth = 1>');
-      
+      expect(interfaces).toContain(
+        'export interface BlogPostContent<D extends ContentLinkDepth = 1>'
+      );
+
       // Verify field types
       expect(interfaces).toContain('title: string;');
       expect(interfaces).toContain('content: string;');
       expect(interfaces).toContain('featuredImage: AgilityImage;');
       expect(interfaces).toContain('publishedDate: string;');
       expect(interfaces).toContain('isPublished: boolean;');
-      
+
       // Verify common types are included
       expect(interfaces).toContain('export interface AgilityImage');
       expect(interfaces).toContain('export interface AgilityContentItem');
@@ -107,15 +114,15 @@ describe('Type Generation Integration Tests', () => {
 
       // Verify import statement
       expect(schemas).toContain("import { z } from 'zod/v4';");
-      
+
       // Verify schema generation
       expect(schemas).toContain('export const BlogPostContentBaseSchema');
       expect(schemas).toContain('export const BlogPostContentSchemaFactory');
-      
+
       // Verify field schemas
       expect(schemas).toContain('title: z.string()');
       expect(schemas).toContain('content: z.string()');
-      
+
       // Verify common schemas
       expect(schemas).toContain('export const AgilityImageSchema');
       expect(schemas).toContain('export const AgilityContentItemSchema');
@@ -127,9 +134,7 @@ describe('Type Generation Integration Tests', () => {
           id: 1,
           referenceName: 'BlogPost',
           displayName: 'Blog Post',
-          fields: [
-            createMockModelField({ name: 'Title', type: 'Text', fieldID: '1' }),
-          ],
+          fields: [createMockModelField({ name: 'Title', type: 'Text', fieldID: '1' })],
         }),
       ];
 
@@ -149,7 +154,7 @@ describe('Type Generation Integration Tests', () => {
       // Verify mapping structure
       expect(mapping).toContain('export const ContainerTypeMapping');
       expect(mapping).toContain('"blogposts": "BlogPostContent"');
-      
+
       // Verify depth-aware types
       expect(mapping).toContain('export interface DepthAwareContainerMapping');
       expect(mapping).toContain('depth0: ContentAtDepth');
@@ -179,7 +184,10 @@ describe('Type Generation Integration Tests', () => {
         }),
       ];
 
-      const validation = generator.validateModelContainerRelationships(validModels, validContainers);
+      const validation = generator.validateModelContainerRelationships(
+        validModels,
+        validContainers
+      );
 
       expect(validation.valid).toBe(true);
       expect(validation.errors).toHaveLength(0);
@@ -190,9 +198,7 @@ describe('Type Generation Integration Tests', () => {
         createMockModel({
           id: 1,
           referenceName: 'BlogPost',
-          fields: [
-            createMockModelField({ name: 'Title', type: 'Text', fieldID: '1' }),
-          ],
+          fields: [createMockModelField({ name: 'Title', type: 'Text', fieldID: '1' })],
         }),
       ];
 
@@ -233,7 +239,7 @@ describe('Type Generation Integration Tests', () => {
       });
 
       const interfaces = generator.generateContentTypeInterfaces([modelWithContentRef]);
-      
+
       // Should generate content reference types
       expect(interfaces).toContain('relatedPosts:');
       expect(interfaces).toContain('AgilityContentReference');
@@ -255,7 +261,7 @@ describe('Type Generation Integration Tests', () => {
       });
 
       const interfaces = generator.generateContentTypeInterfaces([modelWithVariousFields]);
-      
+
       expect(interfaces).toContain('textField: string;');
       expect(interfaces).toContain('numberField: number;');
       expect(interfaces).toContain('booleanField: boolean;');

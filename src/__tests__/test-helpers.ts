@@ -20,7 +20,9 @@ export const createMockModel = (overrides: Partial<mgmtApi.Model> = {}): mgmtApi
   ...overrides,
 });
 
-export const createMockModelField = (overrides: Partial<mgmtApi.ModelField> = {}): mgmtApi.ModelField => ({
+export const createMockModelField = (
+  overrides: Partial<mgmtApi.ModelField> = {}
+): mgmtApi.ModelField => ({
   name: 'TestField',
   label: 'Test Field',
   type: 'Text',
@@ -36,7 +38,9 @@ export const createMockModelField = (overrides: Partial<mgmtApi.ModelField> = {}
   ...overrides,
 });
 
-export const createMockContainer = (overrides: Partial<mgmtApi.Container> = {}): mgmtApi.Container => ({
+export const createMockContainer = (
+  overrides: Partial<mgmtApi.Container> = {}
+): mgmtApi.Container => ({
   columns: [],
   contentViewID: 1,
   contentDefinitionID: 1,
@@ -84,7 +88,9 @@ export const createMockContainer = (overrides: Partial<mgmtApi.Container> = {}):
   ...overrides,
 });
 
-export const createMockContentViewColumn = (overrides: Partial<mgmtApi.ContentViewColumn> = {}): mgmtApi.ContentViewColumn => ({
+export const createMockContentViewColumn = (
+  overrides: Partial<mgmtApi.ContentViewColumn> = {}
+): mgmtApi.ContentViewColumn => ({
   fieldName: 'TestField',
   label: 'Test Field',
   sortOrder: 1,

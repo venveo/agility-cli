@@ -1,5 +1,10 @@
 import { ZodSchemaGenerator } from '../ZodSchemaGenerator';
-import { createMockModel, createMockModelField, createMockContainer, createMockContentViewColumn } from '../../__tests__/test-helpers';
+import {
+  createMockModel,
+  createMockModelField,
+  createMockContainer,
+  createMockContentViewColumn,
+} from '../../__tests__/test-helpers';
 import * as mgmtApi from '@agility/management-sdk';
 import { jest } from '@jest/globals';
 
@@ -19,14 +24,21 @@ describe('ZodSchemaGenerator', () => {
 
   describe('loadModels', () => {
     it('should load and validate models from .agility-files/models directory', () => {
-      const mockModel1 = createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' });
-      const mockModel2 = createMockModel({ id: 2, referenceName: 'RichTextArea', displayName: 'Rich Text Area' });
-      
+      const mockModel1 = createMockModel({
+        id: 1,
+        referenceName: 'BlogPost',
+        displayName: 'Blog Post',
+      });
+      const mockModel2 = createMockModel({
+        id: 2,
+        referenceName: 'RichTextArea',
+        displayName: 'Rich Text Area',
+      });
+
       const mockFileOps = generator['fileOps'] as any;
-      mockFileOps.readDirectory = jest.fn().mockReturnValue([
-        JSON.stringify(mockModel1),
-        JSON.stringify(mockModel2),
-      ]);
+      mockFileOps.readDirectory = jest
+        .fn()
+        .mockReturnValue([JSON.stringify(mockModel1), JSON.stringify(mockModel2)]);
 
       const models = generator.loadModels();
 
@@ -36,8 +48,12 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should skip invalid model files', () => {
-      const mockModel1 = createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' });
-      
+      const mockModel1 = createMockModel({
+        id: 1,
+        referenceName: 'BlogPost',
+        displayName: 'Blog Post',
+      });
+
       const mockFileOps = generator['fileOps'] as any;
       mockFileOps.readDirectory = jest.fn().mockReturnValue([
         JSON.stringify(mockModel1),
@@ -49,7 +65,9 @@ describe('ZodSchemaGenerator', () => {
       const models = generator.loadModels();
 
       expect(models).toHaveLength(1);
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping invalid model file'));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping invalid model file')
+      );
 
       consoleSpy.mockRestore();
     });
@@ -73,12 +91,13 @@ describe('ZodSchemaGenerator', () => {
 
   describe('loadContainers', () => {
     it('should load and validate containers from .agility-files/containers directory', () => {
-      const mockContainer = createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 });
-      
+      const mockContainer = createMockContainer({
+        referenceName: 'BlogPosts',
+        contentDefinitionID: 1,
+      });
+
       const mockFileOps = generator['fileOps'] as any;
-      mockFileOps.readDirectory = jest.fn().mockReturnValue([
-        JSON.stringify(mockContainer),
-      ]);
+      mockFileOps.readDirectory = jest.fn().mockReturnValue([JSON.stringify(mockContainer)]);
 
       const containers = generator.loadContainers();
 
@@ -87,8 +106,11 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should skip invalid container files', () => {
-      const mockContainer = createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 });
-      
+      const mockContainer = createMockContainer({
+        referenceName: 'BlogPosts',
+        contentDefinitionID: 1,
+      });
+
       const mockFileOps = generator['fileOps'] as any;
       mockFileOps.readDirectory = jest.fn().mockReturnValue([
         JSON.stringify(mockContainer),
@@ -100,7 +122,9 @@ describe('ZodSchemaGenerator', () => {
       const containers = generator.loadContainers();
 
       expect(containers).toHaveLength(1);
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping invalid container file'));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping invalid container file')
+      );
 
       consoleSpy.mockRestore();
     });
@@ -110,7 +134,7 @@ describe('ZodSchemaGenerator', () => {
     it('should generate TypeScript interfaces for models', () => {
       const models = [
         createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
-        createMockModel({ id: 2, referenceName: 'RichTextArea', displayName: 'Rich Text Area' })
+        createMockModel({ id: 2, referenceName: 'RichTextArea', displayName: 'Rich Text Area' }),
       ];
       const interfaces = generator.generateContentTypeInterfaces(models);
 
@@ -122,15 +146,21 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should generate depth-aware interfaces', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const interfaces = generator.generateContentTypeInterfaces(models);
 
-      expect(interfaces).toContain('export interface BlogPostContent<D extends ContentLinkDepth = 1>');
+      expect(interfaces).toContain(
+        'export interface BlogPostContent<D extends ContentLinkDepth = 1>'
+      );
       expect(interfaces).toContain('ContentLinkDepth');
     });
 
     it('should include common Agility types', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const interfaces = generator.generateContentTypeInterfaces(models);
 
       expect(interfaces).toContain('export interface AgilityImage');
@@ -145,7 +175,7 @@ describe('ZodSchemaGenerator', () => {
     it('should generate Zod schemas for models', () => {
       const models = [
         createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
-        createMockModel({ id: 2, referenceName: 'RichTextArea', displayName: 'Rich Text Area' })
+        createMockModel({ id: 2, referenceName: 'RichTextArea', displayName: 'Rich Text Area' }),
       ];
       const schemas = generator.generateContentZodSchemas(models);
 
@@ -158,7 +188,9 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should generate depth-aware schema factories', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const schemas = generator.generateContentZodSchemas(models);
 
       expect(schemas).toContain('export const BlogPostContentSchemaFactory');
@@ -168,7 +200,9 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should generate generic types with depth parameter for Zod schemas', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const schemas = generator.generateContentZodSchemas(models);
 
       // Check that the main type export includes the generic depth parameter
@@ -177,11 +211,15 @@ describe('ZodSchemaGenerator', () => {
       expect(schemas).toContain('export type BlogPostContentDepth0');
       expect(schemas).toContain('export type BlogPostContentDepth2');
       // Verify the generic type uses the factory with proper type inference
-      expect(schemas).toContain('z.infer<ReturnType<typeof BlogPostContentSchemaFactory<z.ZodLiteral<D>>>>');
+      expect(schemas).toContain(
+        'z.infer<ReturnType<typeof BlogPostContentSchemaFactory<z.ZodLiteral<D>>>>'
+      );
     });
 
     it('should include common Zod schemas', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const schemas = generator.generateContentZodSchemas(models);
 
       expect(schemas).toContain('export const AgilityImageSchema');
@@ -194,8 +232,12 @@ describe('ZodSchemaGenerator', () => {
 
   describe('generateContainerTypeMapping', () => {
     it('should generate container-to-content-type mapping', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
-      const containers = [createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
+      const containers = [
+        createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 }),
+      ];
       const mapping = generator.generateContainerTypeMapping(models, containers);
 
       expect(mapping).toContain('export const ContainerTypeMapping');
@@ -204,8 +246,12 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should generate depth-aware mapping', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
-      const containers = [createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
+      const containers = [
+        createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 }),
+      ];
       const mapping = generator.generateContainerTypeMapping(models, containers);
 
       expect(mapping).toContain('export interface DepthAwareContainerMapping');
@@ -217,8 +263,12 @@ describe('ZodSchemaGenerator', () => {
 
   describe('validateModelContainerRelationships', () => {
     it('should validate correct model-container relationships', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
-      const containers = [createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
+      const containers = [
+        createMockContainer({ referenceName: 'BlogPosts', contentDefinitionID: 1 }),
+      ];
 
       const validation = generator.validateModelContainerRelationships(models, containers);
 
@@ -227,7 +277,9 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should detect invalid model references', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const invalidContainer = createMockContainer({
         referenceName: 'BlogPosts',
         contentDefinitionID: 999, // Non-existent model ID
@@ -240,18 +292,22 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should detect invalid field references', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const invalidContainer = createMockContainer({
         referenceName: 'BlogPosts',
         contentDefinitionID: 1,
-        columns: [createMockContentViewColumn({
-          fieldName: 'nonExistentField',
-          label: 'Non-existent Field',
-          sortOrder: 1,
-          isDefaultSort: false,
-          sortDirection: 'ASC',
-          typeName: 'Text',
-        })],
+        columns: [
+          createMockContentViewColumn({
+            fieldName: 'nonExistentField',
+            label: 'Non-existent Field',
+            sortOrder: 1,
+            isDefaultSort: false,
+            sortDirection: 'ASC',
+            typeName: 'Text',
+          }),
+        ],
       });
 
       const validation = generator.validateModelContainerRelationships(models, [invalidContainer]);
@@ -261,21 +317,27 @@ describe('ZodSchemaGenerator', () => {
     });
 
     it('should handle system fields as warnings', () => {
-      const models = [createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' })];
+      const models = [
+        createMockModel({ id: 1, referenceName: 'BlogPost', displayName: 'Blog Post' }),
+      ];
       const containerWithSystemField = createMockContainer({
         referenceName: 'BlogPosts',
         contentDefinitionID: 1,
-        columns: [createMockContentViewColumn({
-          fieldName: 'state',
-          label: 'State',
-          sortOrder: 1,
-          isDefaultSort: false,
-          sortDirection: 'ASC',
-          typeName: 'Text',
-        })],
+        columns: [
+          createMockContentViewColumn({
+            fieldName: 'state',
+            label: 'State',
+            sortOrder: 1,
+            isDefaultSort: false,
+            sortDirection: 'ASC',
+            typeName: 'Text',
+          }),
+        ],
       });
 
-      const validation = generator.validateModelContainerRelationships(models, [containerWithSystemField]);
+      const validation = generator.validateModelContainerRelationships(models, [
+        containerWithSystemField,
+      ]);
 
       expect(validation.valid).toBe(true);
       expect(validation.warnings[0]).toContain('uses system field: state');
